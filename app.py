@@ -24,7 +24,7 @@ def home():
     cur = conn.cursor()
 
     # get all players
-    cur.execute("SELECT id, name, role, country, strike_rate, auction_price FROM players ORDER BY id")
+    cur.execute("SELECT id, name, team, role, strike_rate, base_price, auction_price FROM players ORDER BY id")
     players = cur.fetchall()
 
     # current live player (first player by default)
@@ -93,3 +93,4 @@ def bid():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
