@@ -1,72 +1,266 @@
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template, request, redirect, session, url_for, jsonify
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import psycopg2
 import os
+import time
+import threading
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "ipl_auction_secret_2024")
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Database connection
 DATABASE_URL = os.environ.get("DATABASE_URL")
+
+# Team credentials (team_name: password)
+TEAM_CREDENTIALS = {
+    "MI":  "mi123",
+    "RCB": "rcb123",
+    "LSG": "lsg123",
+    "CSK": "csk123",
+    "KKR": "kkr123",
+}
+
+# Team budgets (in Lakhs)
+TEAM_BUDGETS = {
+    "MI":  10000,
+    "RCB": 10000,
+    "LSG": 10000,
+    "CSK": 10000,
+    "KKR": 10000,
+}
+
+# Auction state (in-memory)
+auction_state = {
+    "active": False,
+    "current_player_id": None,
+    "time_left": 0,
+    "timer_running": False,
+    "highest_bidder": None,
+    "highest_bid": 0,
+    "sold_to": None,
+}
+
+auction_timer_thread = None
+
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
 
 
-# HOME PAGE (LOGIN + SHOW PLAYERS)
-@app.route("/", methods=["GET", "POST"])
-def home():
-
-    role = None
-    players = []
-
-    if request.method == "POST":
-        role = request.form.get("role")
-
+def get_players():
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute("SELECT * FROM players ORDER BY id")
     players = cur.fetchall()
-
     conn.close()
+    return players
 
-    return render_template("app.html", role=role, players=players)
 
-
-# BIDDING ROUTE
-@app.route("/bid", methods=["POST"])
-def bid():
-
-    player_id = request.form.get("player_id")
-    bid_price = request.form.get("bid_price")
-
+def get_player(player_id):
     conn = get_conn()
     cur = conn.cursor()
+    cur.execute("SELECT * FROM players WHERE id=%s", (player_id,))
+    player = cur.fetchone()
+    conn.close()
+    return player
 
-    # get current price
+
+def update_auction_price(player_id, price, team):
+    conn = get_conn()
+    cur = conn.cursor()
     cur.execute(
-        "SELECT auction_price FROM players WHERE id=%s",
-        (player_id,)
+        "UPDATE players SET auction_price=%s, sold_to=%s WHERE id=%s",
+        (price, team, player_id)
     )
-
-    result = cur.fetchone()
-
-    if result:
-        current_price = result[0]
-
-        # allow bid only if higher
-        if int(bid_price) > current_price:
-            cur.execute(
-                "UPDATE players SET auction_price=%s WHERE id=%s",
-                (bid_price, player_id)
-            )
-            conn.commit()
-
+    conn.commit()
     conn.close()
 
+
+def run_auction_timer():
+    global auction_state
+    while auction_state["timer_running"] and auction_state["time_left"] > 0:
+        time.sleep(1)
+        auction_state["time_left"] -= 1
+        socketio.emit("timer_update", {
+            "time_left": auction_state["time_left"],
+            "highest_bidder": auction_state["highest_bidder"],
+            "highest_bid": auction_state["highest_bid"],
+        }, room="auction_room")
+
+        if auction_state["time_left"] == 0:
+            # Auction ended
+            auction_state["timer_running"] = False
+            pid = auction_state["current_player_id"]
+            if pid and auction_state["highest_bidder"]:
+                update_auction_price(pid, auction_state["highest_bid"], auction_state["highest_bidder"])
+                auction_state["sold_to"] = auction_state["highest_bidder"]
+                socketio.emit("auction_ended", {
+                    "sold_to": auction_state["highest_bidder"],
+                    "sold_price": auction_state["highest_bid"],
+                    "player_id": pid,
+                }, room="auction_room")
+            else:
+                socketio.emit("auction_ended", {
+                    "sold_to": None,
+                    "sold_price": 0,
+                    "player_id": pid,
+                }, room="auction_room")
+            auction_state["active"] = False
+
+
+# ─── ROUTES ────────────────────────────────────────────────
+
+@app.route("/", methods=["GET", "POST"])
+def home():
+    return render_template("app.html")
+
+
+@app.route("/admin-login", methods=["POST"])
+def admin_login():
+    password = request.form.get("password")
+    if password == os.environ.get("ADMIN_PASSWORD", "admin123"):
+        session["role"] = "admin"
+        session["team"] = "ADMIN"
+        return redirect("/dashboard")
+    return render_template("app.html", error="Invalid admin password")
+
+
+@app.route("/team-login", methods=["POST"])
+def team_login():
+    team = request.form.get("team").upper()
+    password = request.form.get("password")
+    if team in TEAM_CREDENTIALS and TEAM_CREDENTIALS[team] == password:
+        session["role"] = "client"
+        session["team"] = team
+        return redirect("/dashboard")
+    return render_template("app.html", error="Invalid team credentials")
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
     return redirect("/")
 
 
-# RUN APP (Render needs this)
+@app.route("/dashboard")
+def dashboard():
+    if "role" not in session:
+        return redirect("/")
+    players = get_players()
+    role = session["role"]
+    team = session["team"]
+    budget = TEAM_BUDGETS.get(team, 0)
+    return render_template("app.html",
+                           role=role,
+                           team=team,
+                           players=players,
+                           budget=budget,
+                           auction_state=auction_state)
+
+
+# ─── ADMIN API ──────────────────────────────────────────────
+
+@app.route("/admin/start-auction", methods=["POST"])
+def start_auction():
+    if session.get("role") != "admin":
+        return jsonify({"error": "Unauthorized"}), 403
+    global auction_timer_thread
+    data = request.json
+    player_id = data.get("player_id")
+    duration = int(data.get("duration", 60))
+
+    player = get_player(player_id)
+    if not player:
+        return jsonify({"error": "Player not found"}), 404
+
+    auction_state["active"] = True
+    auction_state["current_player_id"] = player_id
+    auction_state["time_left"] = duration
+    auction_state["timer_running"] = True
+    auction_state["highest_bidder"] = None
+    auction_state["highest_bid"] = player[6]  # current auction_price
+    auction_state["sold_to"] = None
+
+    socketio.emit("auction_started", {
+        "player_id": player_id,
+        "player_name": player[1],
+        "team": player[2],
+        "role": player[3],
+        "strike_rate": player[4],
+        "base_price": player[6],
+        "time_left": duration,
+    }, room="auction_room")
+
+    auction_timer_thread = threading.Thread(target=run_auction_timer, daemon=True)
+    auction_timer_thread.start()
+
+    return jsonify({"status": "started"})
+
+
+@app.route("/admin/stop-auction", methods=["POST"])
+def stop_auction():
+    if session.get("role") != "admin":
+        return jsonify({"error": "Unauthorized"}), 403
+    auction_state["timer_running"] = False
+    auction_state["active"] = False
+    socketio.emit("auction_stopped", {}, room="auction_room")
+    return jsonify({"status": "stopped"})
+
+
+@app.route("/admin/reset-player", methods=["POST"])
+def reset_player():
+    if session.get("role") != "admin":
+        return jsonify({"error": "Unauthorized"}), 403
+    data = request.json
+    player_id = data.get("player_id")
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE players SET sold_to=NULL WHERE id=%s", (player_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "reset"})
+
+
+# ─── SOCKETIO ───────────────────────────────────────────────
+
+@socketio.on("join")
+def on_join(data):
+    join_room("auction_room")
+    emit("joined", {"status": "ok"})
+
+
+@socketio.on("place_bid")
+def on_bid(data):
+    if not auction_state["active"] or auction_state["time_left"] == 0:
+        emit("bid_error", {"message": "No active auction"})
+        return
+
+    team = data.get("team")
+    bid_amount = int(data.get("bid_amount", 0))
+    current_highest = auction_state["highest_bid"]
+
+    if bid_amount <= current_highest:
+        emit("bid_error", {"message": f"Bid must be higher than ₹{current_highest}L"})
+        return
+
+    if team not in TEAM_BUDGETS or TEAM_BUDGETS[team] < bid_amount:
+        emit("bid_error", {"message": "Insufficient budget"})
+        return
+
+    # Extend timer by 10s if bid placed in last 10s
+    if auction_state["time_left"] < 10:
+        auction_state["time_left"] = 10
+
+    auction_state["highest_bid"] = bid_amount
+    auction_state["highest_bidder"] = team
+
+    socketio.emit("new_bid", {
+        "team": team,
+        "bid_amount": bid_amount,
+        "time_left": auction_state["time_left"],
+    }, room="auction_room")
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    socketio.run(app, host="0.0.0.0", port=port)
