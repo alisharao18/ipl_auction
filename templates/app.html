@@ -1149,7 +1149,7 @@ tbody tr:last-child td { border-bottom: none; }
           {% for p in players %}
           <div class="player-row {% if p[7] %}sold{% endif %}"
                id="pRow-{{ p[0] }}"
-               onclick="selectPlayer({{ p[0] }}, '{{ p[1] }}', '{{ p[2] }}', '{{ p[3] }}', {{ p[4] }}, {{ p[6] }})">
+               onclick="selectPlayer({{ p[0] }}, '{{ p[1] }}', '{{ p[2] }}', '{{ p[3] }}', '{{ p[4] }}', {{ p[6] }})">
             <div style="font-size:24px;">
               {% if p[3] == 'Batsman' %}🏏
               {% elif p[3] == 'Bowler' %}🎯
@@ -1340,14 +1340,14 @@ let currentPrice = 0;
 // ── Socket connection: join room, then sync current state
 socket.on("connect", () => {
   socket.emit("join", {}, () => {
-    // Confirmed joined — now fetch current auction state in case it's already running
     fetch("/auction-state")
       .then(r => r.json())
       .then(data => {
         if (data.active) {
-          // Replay auction_started so the UI wakes up
+          // Use full_duration as timerMax so bar is correctly scaled
+          timerMax = data.full_duration || data.time_left;
           handleAuctionStarted(data);
-          // Also update to current bid/timer in case we joined mid-auction
+          // Override with live values after handleAuctionStarted sets base_price
           if (data.highest_bidder) {
             document.getElementById("livePrice").textContent = data.highest_bid;
             document.getElementById("liveBidder").textContent = "▲ " + data.highest_bidder;
@@ -1358,6 +1358,7 @@ socket.on("connect", () => {
           document.getElementById("timerFill").style.width = pct + "%";
         }
       });
+  });
 });
 
 // ── Admin: select player
@@ -1378,9 +1379,17 @@ function startAuction() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ player_id: selectedPlayerId, duration, token: myToken })
-  });
-  document.getElementById("startBtn") && (document.getElementById("startBtn").style.display = "none");
-  document.getElementById("stopBtn") && (document.getElementById("stopBtn").style.display = "block");
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === "started") {
+      document.getElementById("startBtn").style.display = "none";
+      document.getElementById("stopBtn").style.display = "block";
+    } else {
+      alert("Error starting auction: " + (data.error || "unknown"));
+    }
+  })
+  .catch(() => alert("Network error — could not start auction"));
 }
 
 function stopAuction() {
@@ -1396,7 +1405,7 @@ function placeBid() {
     showFeedback("Bid must be higher than ₹" + currentPrice + "L", "error");
     return;
   }
-  socket.emit("place_bid", { team: myTeam, bid_amount: bidVal });
+  socket.emit("place_bid", { token: myToken, bid_amount: bidVal });
 }
 
 function setQuickBid(add) {
@@ -1415,13 +1424,13 @@ function showFeedback(msg, type) {
 function handleAuctionStarted(data) {
   currentPlayerId = data.player_id;
   currentPrice = data.base_price;
-  timerMax = data.time_left;
+  timerMax = data.time_left;  // full duration — only correct on live auction_started event
 
   document.getElementById("idleState").style.display = "none";
   document.getElementById("liveState").style.display = "block";
   document.getElementById("liveName").textContent = data.player_name;
-  document.getElementById("liveTeam").textContent = data.team;
-  document.getElementById("liveRole").textContent = data.role;
+  document.getElementById("liveTeam").textContent = data.ipl_team;
+  document.getElementById("liveRole").textContent = data.player_role;
   document.getElementById("liveSR").textContent = "SR: " + data.strike_rate;
   document.getElementById("livePrice").textContent = data.base_price;
   document.getElementById("liveBidder").textContent = "No bids yet";
@@ -1433,6 +1442,7 @@ function handleAuctionStarted(data) {
   if (myRole === "client") {
     document.getElementById("bidBtn").disabled = false;
     document.getElementById("bidInput").value = "";
+    document.getElementById("bidInput").placeholder = "Min: ₹" + (data.base_price + 1) + "L";
   }
 
   addFeed("SYSTEM", null, "🔔 Auction started for " + data.player_name, null);
@@ -1480,6 +1490,7 @@ socket.on("auction_ended", (data) => {
   }
 
   if (data.sold_to) {
+    document.getElementById("soldPlayerName").textContent = document.getElementById("liveName")?.textContent || "Player";
     document.getElementById("soldTeam").textContent = data.sold_to;
     document.getElementById("soldPrice").textContent = "₹" + data.sold_price + "L";
     const priceEl = document.getElementById("tablePrice-" + data.player_id);
