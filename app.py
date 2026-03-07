@@ -90,10 +90,9 @@ def run_auction_timer():
             "time_left": auction_state["time_left"],
             "highest_bidder": auction_state["highest_bidder"],
             "highest_bid": auction_state["highest_bid"],
-        }, room="auction_room")
+        }, room="auction_room", namespace="/")
 
         if auction_state["time_left"] == 0:
-            # Auction ended
             auction_state["timer_running"] = False
             pid = auction_state["current_player_id"]
             if pid and auction_state["highest_bidder"]:
@@ -103,13 +102,13 @@ def run_auction_timer():
                     "sold_to": auction_state["highest_bidder"],
                     "sold_price": auction_state["highest_bid"],
                     "player_id": pid,
-                }, room="auction_room")
+                }, room="auction_room", namespace="/")
             else:
                 socketio.emit("auction_ended", {
                     "sold_to": None,
                     "sold_price": 0,
                     "player_id": pid,
-                }, room="auction_room")
+                }, room="auction_room", namespace="/")
             auction_state["active"] = False
 
 
@@ -199,7 +198,7 @@ def start_auction():
         "strike_rate": player[4],
         "base_price": player[6],
         "time_left": duration,
-    }, room="auction_room")
+    }, room="auction_room", namespace="/")
 
     auction_timer_thread = threading.Thread(target=run_auction_timer, daemon=True)
     auction_timer_thread.start()
@@ -214,7 +213,7 @@ def stop_auction():
         return jsonify({"error": "Unauthorized"}), 403
     auction_state["timer_running"] = False
     auction_state["active"] = False
-    socketio.emit("auction_stopped", {}, room="auction_room")
+    socketio.emit("auction_stopped", {}, room="auction_room", namespace="/")
     return jsonify({"status": "stopped"})
 
 
@@ -232,12 +231,34 @@ def reset_player():
     return jsonify({"status": "reset"})
 
 
+# State sync — client calls this after joining to catch up if auction already running
+@app.route("/auction-state")
+def get_auction_state():
+    if not auction_state["active"]:
+        return jsonify({"active": False})
+    pid = auction_state["current_player_id"]
+    player = get_player(pid) if pid else None
+    return jsonify({
+        "active": True,
+        "player_id": pid,
+        "player_name": player[1] if player else "",
+        "team": player[2] if player else "",
+        "role": player[3] if player else "",
+        "strike_rate": float(player[4]) if player else 0,
+        "base_price": auction_state["highest_bid"],
+        "time_left": auction_state["time_left"],
+        "highest_bidder": auction_state["highest_bidder"],
+        "highest_bid": auction_state["highest_bid"],
+    })
+
+
 # ─── SOCKETIO ───────────────────────────────────────────────
 
 @socketio.on("join")
 def on_join(data):
     join_room("auction_room")
     emit("joined", {"status": "ok"})
+    return {"status": "ok"}   # ← this is the ack returned to socket.emit("join", {}, callback)
 
 
 @socketio.on("place_bid")
