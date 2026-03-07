@@ -1337,7 +1337,28 @@ let timerMax = 60;
 let currentPlayerId = null;
 let currentPrice = 0;
 
-socket.on("connect", () => socket.emit("join", {}));
+// ── Socket connection: join room, then sync current state
+socket.on("connect", () => {
+  socket.emit("join", {}, () => {
+    // Confirmed joined — now fetch current auction state in case it's already running
+    fetch("/auction-state")
+      .then(r => r.json())
+      .then(data => {
+        if (data.active) {
+          // Replay auction_started so the UI wakes up
+          handleAuctionStarted(data);
+          // Also update to current bid/timer in case we joined mid-auction
+          if (data.highest_bidder) {
+            document.getElementById("livePrice").textContent = data.highest_bid;
+            document.getElementById("liveBidder").textContent = "▲ " + data.highest_bidder;
+            currentPrice = data.highest_bid;
+          }
+          document.getElementById("timerCount").textContent = data.time_left;
+          const pct = (data.time_left / timerMax) * 100;
+          document.getElementById("timerFill").style.width = pct + "%";
+        }
+      });
+});
 
 // ── Admin: select player
 let selectedPlayerId = null;
@@ -1391,7 +1412,7 @@ function showFeedback(msg, type) {
 }
 
 // ── Socket events
-socket.on("auction_started", (data) => {
+function handleAuctionStarted(data) {
   currentPlayerId = data.player_id;
   currentPrice = data.base_price;
   timerMax = data.time_left;
@@ -1415,7 +1436,9 @@ socket.on("auction_started", (data) => {
   }
 
   addFeed("SYSTEM", null, "🔔 Auction started for " + data.player_name, null);
-});
+}
+
+socket.on("auction_started", handleAuctionStarted);
 
 socket.on("timer_update", (data) => {
   const t = data.time_left;
