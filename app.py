@@ -1,8 +1,6 @@
-from flask import Flask, render_template, request, redirect, jsonify, Response, session, url_for
+from flask import Flask, render_template, request, redirect, url_for, jsonify, session
 import psycopg2
 import os
-import time
-import json
 import threading
 from datetime import datetime, timedelta
 
@@ -11,245 +9,218 @@ app.secret_key = os.environ.get("SECRET_KEY", "ipl-auction-secret-2024")
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# In-memory auction state
 auction_state = {
-    "live_player_id": None,
-    "timer_end": None,
+    "active_player_id": None,
+    "end_time": None,
     "current_bid": 0,
     "current_bidder": None,
-    "status": "idle"  # idle | live | ended
+    "status": "idle"
 }
 auction_lock = threading.Lock()
-sse_clients = []
-sse_lock = threading.Lock()
 
 PLAYER_IMAGES = {
-    "Virat Kohli":   "https://documents.iplt20.com/ipl/IPLHeadshot2024/2.png",
-    "Rohit Sharma":  "https://documents.iplt20.com/ipl/IPLHeadshot2024/107.png",
-    "Jasprit Bumrah":"https://documents.iplt20.com/ipl/IPLHeadshot2024/1124.png",
-    "Hardik Pandya": "https://documents.iplt20.com/ipl/IPLHeadshot2024/184.png",
-    "KL Rahul":      "https://documents.iplt20.com/ipl/IPLHeadshot2024/1125.png",
+    "Virat Kohli": "https://assets.iplt20.com/ipl/IPLHeadshot2024/1.png",
+    "Rohit Sharma": "https://assets.iplt20.com/ipl/IPLHeadshot2024/107.png",
+    "Jasprit Bumrah": "https://assets.iplt20.com/ipl/IPLHeadshot2024/1124.png",
+    "Hardik Pandya": "https://assets.iplt20.com/ipl/IPLHeadshot2024/2740.png",
+    "KL Rahul": "https://assets.iplt20.com/ipl/IPLHeadshot2024/1478.png",
 }
 
 TEAM_COLORS = {
-    "RCB": "#EC1C24",
-    "MI":  "#005DA0",
-    "LSG": "#A4C639",
-    "CSK": "#F9CD05",
-    "KKR": "#3A225D",
-    "DC":  "#0078BC",
-    "SRH": "#F26522",
-    "RR":  "#FF69B4",
-    "PBKS":"#AA4545",
-    "GT":  "#1C4966",
+    "RCB": {"primary": "#EC1C24", "secondary": "#000000", "accent": "#FFD700"},
+    "MI": {"primary": "#004BA0", "secondary": "#D1AB3E", "accent": "#FFFFFF"},
+    "LSG": {"primary": "#A4C8E0", "secondary": "#004B8D", "accent": "#FFD700"},
+    "CSK": {"primary": "#F9CD05", "secondary": "#0081E9", "accent": "#FFFFFF"},
+    "KKR": {"primary": "#3A225D", "secondary": "#B3A123", "accent": "#FFFFFF"},
 }
+DEFAULT_TEAM = {"primary": "#1a1a2e", "secondary": "#e94560", "accent": "#FFD700"}
+
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
 
-def notify_clients(data):
-    msg = f"data: {json.dumps(data)}\n\n"
-    with sse_lock:
-        dead = []
-        for q in sse_clients:
-            try:
-                q.append(msg)
-            except Exception:
-                dead.append(q)
-        for d in dead:
-            sse_clients.remove(d)
 
-def get_auction_snapshot():
-    with auction_lock:
-        snap = dict(auction_state)
-        if snap["timer_end"]:
-            remaining = max(0, snap["timer_end"] - time.time())
-            snap["remaining"] = int(remaining)
-        else:
-            snap["remaining"] = 0
-    return snap
+def get_players():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM players ORDER BY id")
+    players = cur.fetchall()
+    conn.close()
+    return players
 
-# ── Timer expiry background thread ──────────────────────────────────────────
-def timer_watcher():
-    while True:
-        time.sleep(1)
-        with auction_lock:
-            if auction_state["status"] == "live" and auction_state["timer_end"]:
-                if time.time() >= auction_state["timer_end"]:
-                    auction_state["status"] = "ended"
-                    snap = dict(auction_state)
-        if auction_state["status"] == "ended":
-            notify_clients({"type": "auction_ended", "state": get_auction_snapshot()})
 
-watcher = threading.Thread(target=timer_watcher, daemon=True)
-watcher.start()
+def get_player(player_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM players WHERE id=%s", (player_id,))
+    player = cur.fetchone()
+    conn.close()
+    return player
 
-# ── Routes ───────────────────────────────────────────────────────────────────
 
-@app.route("/", methods=["GET", "POST"])
-def home():
-    if request.method == "POST":
-        role = request.form.get("role")
-        name = request.form.get("username", "Guest")
-        session["role"] = role
-        session["username"] = name
-        return redirect("/dashboard")
+def build_player_dict(p):
+    return {
+        "id": p[0], "name": p[1], "team": p[2], "role": p[3],
+        "strike_rate": p[4], "base_price": p[5], "auction_price": p[6],
+        "image": PLAYER_IMAGES.get(p[1], ""),
+        "team_color": TEAM_COLORS.get(p[2], DEFAULT_TEAM)
+    }
+
+
+@app.route("/")
+def index():
     return render_template("login.html")
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    role = request.form.get("role")
+    name = request.form.get("name", "Guest")
+    session["role"] = role
+    session["name"] = name
+    if role == "admin":
+        return redirect(url_for("admin_dashboard"))
+    return redirect(url_for("client_dashboard"))
+
 
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect("/")
+    return redirect(url_for("index"))
 
-@app.route("/dashboard")
-def dashboard():
-    role = session.get("role")
-    if not role:
-        return redirect("/")
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT id, name, team, role, strike_rate, base_price, auction_price, sold_to FROM players ORDER BY id")
-    rows = cur.fetchall()
-    conn.close()
 
-    players = []
-    for r in rows:
-        players.append({
-            "id": r[0], "name": r[1], "team": r[2], "role": r[3],
-            "strike_rate": r[4], "base_price": r[5], "auction_price": r[6],
-            "sold_to": r[7],
-            "image": PLAYER_IMAGES.get(r[1], "https://placehold.co/160x160/1a1a2e/gold?text=Player"),
-            "team_color": TEAM_COLORS.get(r[2], "#FFD700"),
-        })
-
-    snap = get_auction_snapshot()
-    live_player = None
-    if snap["live_player_id"]:
-        for p in players:
-            if p["id"] == snap["live_player_id"]:
-                live_player = p
-                break
-
-    return render_template("dashboard.html", role=role,
-                           username=session.get("username"),
-                           players=players,
-                           snap=snap,
-                           live_player=live_player)
-
-# ── Admin: start auction for a player ───────────────────────────────────────
-@app.route("/admin/start", methods=["POST"])
-def admin_start():
+@app.route("/admin")
+def admin_dashboard():
     if session.get("role") != "admin":
-        return jsonify({"error": "forbidden"}), 403
-    player_id = int(request.json.get("player_id"))
+        return redirect(url_for("index"))
+    players = [build_player_dict(p) for p in get_players()]
+    return render_template("admin.html", players=players, auction_state=auction_state)
 
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT base_price FROM players WHERE id=%s", (player_id,))
-    row = cur.fetchone()
-    conn.close()
 
-    if not row:
-        return jsonify({"error": "not found"}), 404
+@app.route("/client")
+def client_dashboard():
+    if session.get("role") != "client":
+        return redirect(url_for("index"))
+    players = [build_player_dict(p) for p in get_players()]
+    return render_template("client.html", players=players, auction_state=auction_state)
 
+
+@app.route("/admin/start_auction/<int:player_id>", methods=["POST"])
+def start_auction(player_id):
+    if session.get("role") != "admin":
+        return jsonify({"error": "Unauthorized"}), 403
+    player = get_player(player_id)
+    if not player:
+        return jsonify({"error": "Player not found"}), 404
     with auction_lock:
-        auction_state["live_player_id"] = player_id
-        auction_state["timer_end"] = time.time() + 60
-        auction_state["current_bid"] = row[0]
+        auction_state["active_player_id"] = player_id
+        auction_state["end_time"] = (datetime.now() + timedelta(seconds=60)).isoformat()
+        auction_state["current_bid"] = player[5]
         auction_state["current_bidder"] = None
         auction_state["status"] = "live"
+    return jsonify({"success": True})
 
-    notify_clients({"type": "auction_started", "state": get_auction_snapshot()})
-    return jsonify({"ok": True})
 
-# ── Admin: end auction early ─────────────────────────────────────────────────
-@app.route("/admin/end", methods=["POST"])
-def admin_end():
+@app.route("/admin/end_auction", methods=["POST"])
+def end_auction():
     if session.get("role") != "admin":
-        return jsonify({"error": "forbidden"}), 403
-
+        return jsonify({"error": "Unauthorized"}), 403
     with auction_lock:
-        if auction_state["status"] == "live":
-            auction_state["status"] = "ended"
-            auction_state["timer_end"] = time.time()
+        if auction_state["status"] == "live" and auction_state["active_player_id"]:
+            try:
+                conn = get_conn()
+                cur = conn.cursor()
+                cur.execute("UPDATE players SET auction_price=%s WHERE id=%s",
+                            (auction_state["current_bid"], auction_state["active_player_id"]))
+                conn.commit()
+                conn.close()
+            except:
+                pass
+        auction_state["status"] = "ended"
+    return jsonify({"success": True})
 
-    # save to DB
-    _finalize_auction()
-    notify_clients({"type": "auction_ended", "state": get_auction_snapshot()})
-    return jsonify({"ok": True})
 
-def _finalize_auction():
+@app.route("/admin/reset_auction", methods=["POST"])
+def reset_auction():
+    if session.get("role") != "admin":
+        return jsonify({"error": "Unauthorized"}), 403
     with auction_lock:
-        pid = auction_state["live_player_id"]
-        price = auction_state["current_bid"]
-        bidder = auction_state["current_bidder"]
-        status = auction_state["status"]
+        auction_state.update({"active_player_id": None, "end_time": None,
+                               "current_bid": 0, "current_bidder": None, "status": "idle"})
+    return jsonify({"success": True})
 
-    if pid and status == "ended":
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE players SET auction_price=%s, sold_to=%s WHERE id=%s",
-            (price, bidder, pid)
-        )
-        conn.commit()
-        conn.close()
 
-# ── Client: place bid ────────────────────────────────────────────────────────
 @app.route("/bid", methods=["POST"])
 def bid():
     if session.get("role") != "client":
-        return jsonify({"error": "forbidden"}), 403
-
-    data = request.json
-    bid_amount = int(data.get("amount", 0))
-    bidder = session.get("username", "Unknown")
-
+        return jsonify({"error": "Unauthorized"}), 403
+    data = request.get_json()
+    bid_amount = int(data.get("bid_amount", 0))
+    bidder_name = session.get("name", "Anonymous")
     with auction_lock:
         if auction_state["status"] != "live":
-            return jsonify({"error": "No live auction"}), 400
-        if time.time() > auction_state["timer_end"]:
-            return jsonify({"error": "Timer expired"}), 400
+            return jsonify({"error": "No active auction"}), 400
+        if auction_state["end_time"]:
+            end_time = datetime.fromisoformat(auction_state["end_time"])
+            if datetime.now() > end_time:
+                auction_state["status"] = "ended"
+                return jsonify({"error": "Auction has ended"}), 400
         if bid_amount <= auction_state["current_bid"]:
-            return jsonify({"error": "Bid too low"}), 400
-
+            return jsonify({"error": f"Bid must exceed current ₹{auction_state['current_bid']}L"}), 400
         auction_state["current_bid"] = bid_amount
-        auction_state["current_bidder"] = bidder
-        # extend timer by 10s if < 10s left
-        remaining = auction_state["timer_end"] - time.time()
-        if remaining < 10:
-            auction_state["timer_end"] = time.time() + 10
+        auction_state["current_bidder"] = bidder_name
+        current_end = datetime.fromisoformat(auction_state["end_time"])
+        new_end = max(current_end, datetime.now() + timedelta(seconds=10))
+        auction_state["end_time"] = new_end.isoformat()
+    return jsonify({"success": True, "new_bid": bid_amount, "bidder": bidder_name})
 
-    notify_clients({"type": "bid_placed", "state": get_auction_snapshot()})
-    return jsonify({"ok": True, "state": get_auction_snapshot()})
 
-# ── SSE stream ────────────────────────────────────────────────────────────────
-@app.route("/stream")
-def stream():
-    client_queue = []
-    with sse_lock:
-        sse_clients.append(client_queue)
+@app.route("/auction_status")
+def auction_status():
+    with auction_lock:
+        state = dict(auction_state)
+    seconds_remaining = 0
+    if state["end_time"] and state["status"] == "live":
+        end_time = datetime.fromisoformat(state["end_time"])
+        remaining = (end_time - datetime.now()).total_seconds()
+        seconds_remaining = max(0, int(remaining))
+        if seconds_remaining == 0:
+            with auction_lock:
+                if auction_state["status"] == "live":
+                    auction_state["status"] = "ended"
+                    if auction_state["active_player_id"]:
+                        try:
+                            conn = get_conn()
+                            cur = conn.cursor()
+                            cur.execute("UPDATE players SET auction_price=%s WHERE id=%s",
+                                        (auction_state["current_bid"], auction_state["active_player_id"]))
+                            conn.commit()
+                            conn.close()
+                        except:
+                            pass
+            state["status"] = "ended"
 
-    def generate():
-        # send current state immediately
-        yield f"data: {json.dumps({'type': 'init', 'state': get_auction_snapshot()})}\n\n"
-        while True:
-            if client_queue:
-                msg = client_queue.pop(0)
-                yield msg
-            else:
-                # heartbeat every 15s
-                yield f": heartbeat\n\n"
-                time.sleep(1)
+    player_data = None
+    if state["active_player_id"]:
+        player = get_player(state["active_player_id"])
+        if player:
+            player_data = build_player_dict(player)
 
-    return Response(generate(), mimetype="text/event-stream",
-                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return jsonify({
+        "status": state["status"],
+        "current_bid": state["current_bid"],
+        "current_bidder": state["current_bidder"],
+        "seconds_remaining": seconds_remaining,
+        "player": player_data
+    })
 
-# ── API: current state ────────────────────────────────────────────────────────
-@app.route("/api/state")
-def api_state():
-    return jsonify(get_auction_snapshot())
+
+@app.route("/players_data")
+def players_data():
+    players = get_players()
+    return jsonify([build_player_dict(p) for p in players])
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port, threaded=True)
+    app.run(host="0.0.0.0", port=port, debug=False)
