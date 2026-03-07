@@ -1047,7 +1047,7 @@ tbody tr:last-child td { border-bottom: none; }
     <div class="live-dot"></div>
     <span style="font-size:12px; color: var(--muted); letter-spacing: 2px;">LIVE</span>
     <div class="team-pill">{{ team }}</div>
-    <a href="/logout"><button class="logout-btn">← EXIT</button></a>
+    <a href="/logout?token={{ token }}"><button class="logout-btn">← EXIT</button></a>
   </div>
 </header>
 
@@ -1332,6 +1332,7 @@ tbody tr:last-child td { border-bottom: none; }
 const socket = io();
 const myTeam = "{{ team }}";
 const myRole = "{{ role }}";
+const myToken = "{{ token }}";
 let timerMax = 60;
 let currentPlayerId = null;
 let currentPrice = 0;
@@ -1355,14 +1356,14 @@ function startAuction() {
   fetch("/admin/start-auction", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ player_id: selectedPlayerId, duration })
+    body: JSON.stringify({ player_id: selectedPlayerId, duration, token: myToken })
   });
   document.getElementById("startBtn") && (document.getElementById("startBtn").style.display = "none");
   document.getElementById("stopBtn") && (document.getElementById("stopBtn").style.display = "block");
 }
 
 function stopAuction() {
-  fetch("/admin/stop-auction", { method: "POST" });
+  fetch("/admin/stop-auction", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({token: myToken}) });
   document.getElementById("startBtn") && (document.getElementById("startBtn").style.display = "block");
   document.getElementById("stopBtn") && (document.getElementById("stopBtn").style.display = "none");
 }
