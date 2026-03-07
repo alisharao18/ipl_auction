@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPL Auction — Bidding Room</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #FFD700;
+    --gold2: #FFA500;
+    --dark: #080a14;
+    --dark2: #0d1128;
+    --red: #e63946;
+    --green: #2ecc71;
+    --glass: rgba(255,255,255,0.04);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    background: var(--dark);
+    font-family: 'Rajdhani', sans-serif;
+    color: #fff;
+  }
+  .bg-fixed {
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(20,40,120,0.4) 0%, transparent 60%),
+      linear-gradient(180deg, #080a14 0%, #0a0f20 100%);
+    z-index: 0;
+  }
+  .bg-grid {
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,215,0,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,215,0,0.015) 1px, transparent 1px);
+    background-size: 50px 50px;
+    z-index: 0;
+  }
+  .wrapper { position: relative; z-index: 1; }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 32px;
+    border-bottom: 1px solid rgba(255,215,0,0.08);
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(20px);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-logo {
+    font-family: 'Bebas Neue', cursive;
+    font-size: 32px;
+    background: linear-gradient(135deg, var(--gold), var(--gold2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 4px;
+  }
+  .bidder-badge {
+    background: linear-gradient(135deg, rgba(46,204,113,0.2), rgba(46,204,113,0.05));
+    border: 1px solid rgba(46,204,113,0.3);
+    color: var(--green);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .logout-btn {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.5);
+    padding: 8px 16px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    transition: all 0.3s;
+  }
+  .logout-btn:hover { border-color: var(--red); color: var(--red); }
+
+  /* WAITING STATE */
+  #waiting-room {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    text-align: center;
+    padding: 40px;
+  }
+  .waiting-icon {
+    font-size: 80px;
+    margin-bottom: 24px;
+    animation: bounce 2s ease infinite;
+  }
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+  }
+  .waiting-title {
+    font-family: 'Bebas Neue', cursive;
+    font-size: 48px;
+    letter-spacing: 4px;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 8px;
+  }
+  .waiting-sub {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: rgba(255,255,255,0.2);
+    text-transform: uppercase;
+  }
+
+  /* LIVE BIDDING ARENA */
+  #auction-arena {
+    display: none;
+    padding: 0;
+  }
+  #auction-arena.visible { display: block; }
+
+  .arena-hero {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(180deg, rgba(255,215,0,0.04) 0%, transparent 100%);
+    border-bottom: 1px solid rgba(255,215,0,0.1);
+    padding: 32px;
+  }
+
+  /* Scanline effect */
+  .arena-hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(255,255,255,0.01) 2px,
+      rgba(255,255,255,0.01) 4px
+    );
+    pointer-events: none;
+  }
+
+  .arena-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 40px;
+    align-items: center;
+  }
+
+  .arena-player-img-wrap {
+    position: relative;
+  }
+  .arena-img-bg {
+    position: absolute;
+    inset: -10px;
+    border-radius: 20px;
+    opacity: 0.3;
+    filter: blur(20px);
+  }
+  #arena-player-img {
+    width: 200px;
+    height: 240px;
+    object-fit: contain;
+    object-position: top;
+    position: relative;
+    z-index: 1;
+    filter: drop-shadow(0 10px 40px rgba(0,0,0,0.8));
+    animation: player-in 0.5s ease;
+  }
+  @keyframes player-in {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .arena-info { position: relative; z-index: 1; }
+  .arena-team-tag {
+    display: inline-block;
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+  .arena-player-name {
+    font-family: 'Bebas Neue', cursive;
+    font-size: 64px;
+    letter-spacing: 2px;
+    line-height: 0.9;
+    color: #fff;
+    margin-bottom: 8px;
+    text-shadow: 0 0 40px rgba(255,255,255,0.1);
+  }
+  .arena-player-role {
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: rgba(255,255,255,0.4);
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+
+  .arena-stats-row {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 28px;
+  }
+  .arena-stat {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 12px 16px;
+    min-width: 80px;
+  }
+  .arena-stat-val {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--gold);
+  }
+  .arena-stat-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,0.3);
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* BIG BID DISPLAY */
+  .bid-display {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+  .bid-currency {
+    font-family: 'Bebas Neue', cursive;
+    font-size: 28px;
+    color: var(--gold);
+    opacity: 0.7;
+  }
+  #client-current-bid {
+    font-family: 'Bebas Neue', cursive;
+    font-size: 72px;
+    background: linear-gradient(135deg, var(--gold), var(--gold2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px;
+    line-height: 1;
+    transition: all 0.3s;
+  }
+  #client-current-bid.bid-up {
+    animation: bid-flash 0.5s ease;
+  }
+  @keyframes bid-flash {
+    0% { filter: brightness(1); }
+    50% { filter: brightness(2); }
+    100% { filter: brightness(1); }
+  }
+  .bid-suffix {
+    font-family: 'Bebas Neue', cursive;
+    font-size: 28px;
+    color: var(--gold);
+    opacity: 0.7;
+  }
+  .bid-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  #client-bidder {
+    font-size: 13px;
+    color: rgba(255,255,255,0.5);
+    font-weight: 600;
+  }
+
+  /* TIMER RING */
+  .timer-ring-wrap {
+    position: absolute;
+    top: 32px; right: 32px;
+    text-align: center;
+  }
+  .timer-ring {
+    position: relative;
+    width: 90px;
+    height: 90px;
+  }
+  .timer-ring svg {
+    transform: rotate(-90deg);
+  }
+  .timer-ring circle {
+    fill: none;
+    stroke-width: 6;
+  }
+  .timer-bg { stroke: rgba(255,255,255,0.06); }
+  #timer-progress { stroke: var(--gold); stroke-linecap: round; transition: stroke-dashoffset 1s linear, stroke 0.5s; }
+  .timer-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', monospace;
+    font-size: 22px;
+    font-weight: 900;
+    color: var(--gold);
+    transition: color 0.3s;
+  }
+  .timer-text.urgent { color: var(--red); }
+
+  /* BID FORM */
+  .bid-form-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .bid-input-wrap {
+    display: flex;
+    align-items: center;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,215,0,0.2);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: all 0.3s;
+  }
+  .bid-input-wrap:focus-within {
+    border-color: var(--gold);
+    box-shadow: 0 0 20px rgba(255,215,0,0.1);
+  }
+  .bid-prefix {
+    padding: 0 12px;
+    font-family: 'Bebas Neue', cursive;
+    font-size: 20px;
+    color: var(--gold);
+    border-right: 1px solid rgba(255,215,0,0.15);
+  }
+  #bid-input {
+    background: none;
+    border: none;
+    outline: none;
+    padding: 14px 16px;
+    color: #fff;
+    font-family: 'Orbitron', monospace;
+    font-size: 16px;
+    width: 140px;
+  }
+  #bid-input::placeholder { color: rgba(255,255,255,0.2); }
+  .bid-suffix-label {
+    padding: 0 12px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.3);
+    border-left: 1px solid rgba(255,255,255,0.06);
+  }
+  .place-bid-btn {
+    padding: 14px 28px;
+    background: linear-gradient(135deg, var(--gold), var(--gold2));
+    border: none;
+    border-radius: 10px;
+    font-family: 'Bebas Neue', cursive;
+    font-size: 20px;
+    letter-spacing: 3px;
+    color: #000;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 20px rgba(255,165,0,0.3);
+    white-space: nowrap;
+  }
+  .place-bid-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(255,165,0,0.5);
+  }
+  .place-bid-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  /* QUICK BID BUTTONS */
+  .quick-bids {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  .quick-btn {
+    padding: 7px 14px;
+    background: rgba(255,215,0,0.08);
+    border: 1px solid rgba(255,215,0,0.2);
+    border-radius: 6px;
+    color: var(--gold);
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  .quick-btn:hover {
+    background: rgba(255,215,0,0.15);
+    border-color: var(--gold);
+  }
+
+  /* BID FEEDBACK */
+  #bid-feedback {
+    margin-top: 10px;
+    min-height: 24px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.3s;
+  }
+  .feedback-success { color: var(--green); }
+  .feedback-error { color: var(--red); }
+
+  /* ENDED STATE */
+  #ended-banner {
+    display: none;
+    text-align: center;
+    padding: 60px 32px;
+  }
+  #ended-banner.visible { display: block; }
+  .ended-title {
+    font-family: 'Bebas Neue', cursive;
+    font-size: 72px;
+    letter-spacing: 6px;
+    background: linear-gradient(135deg, var(--gold), var(--gold2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .ended-sub {
+    font-size: 16px;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  /* PLAYER CARDS BELOW */
+  .section-title {
+    padding: 32px 32px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .section-title h2 {
+    font-family: 'Bebas Neue', cursive;
+    font-size: 28px;
+    letter-spacing: 3px;
+    color: rgba(255,255,255,0.6);
+    white-space: nowrap;
+  }
+  .section-line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(255,215,0,0.2), transparent);
+  }
+  .players-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+    padding: 0 32px 40px;
+  }
+  .player-card {
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02);
+    transition: all 0.3s;
+    position: relative;
+  }
+  .player-card.active-now {
+    border-color: var(--gold);
+    box-shadow: 0 0 30px rgba(255,215,0,0.15);
+    animation: card-glow 2s ease infinite;
+  }
+  @keyframes card-glow {
+    0%, 100% { box-shadow: 0 0 20px rgba(255,215,0,0.1); }
+    50% { box-shadow: 0 0 40px rgba(255,215,0,0.25); }
+  }
+  .card-team-bar { height: 3px; }
+  .card-img-wrap {
+    height: 140px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .card-img-wrap img { height: 130px; object-fit: contain; object-position: top; }
+  .card-team-logo {
+    position: absolute; top: 8px; right: 8px;
+    background: rgba(0,0,0,0.7);
+    border-radius: 5px;
+    padding: 3px 7px;
+    font-family: 'Bebas Neue', cursive;
+    font-size: 12px;
+  }
+  .card-body { padding: 12px; }
+  .card-name {
+    font-family: 'Bebas Neue', cursive;
+    font-size: 18px;
+    letter-spacing: 1px;
+    color: #fff;
+    margin-bottom: 2px;
+  }
+  .card-role {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.3);
+    margin-bottom: 8px;
+  }
+  .card-prices {
+    display: flex;
+    justify-content: space-between;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .price-block { text-align: center; }
+  .price-val { font-family: 'Orbitron', monospace; font-size: 11px; color: var(--gold); }
+  .price-label { font-size: 8px; letter-spacing: 1px; color: rgba(255,255,255,0.25); text-transform: uppercase; margin-top: 2px; }
+  .card-strike {
+    font-size: 10px;
+    color: rgba(255,255,255,0.35);
+    margin-bottom: 6px;
+  }
+
+  /* TOAST */
+  #toast-container {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .toast {
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    animation: slide-up 0.3s ease;
+    max-width: 300px;
+  }
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .toast-success { background: rgba(46,204,113,0.15); border: 1px solid rgba(46,204,113,0.4); color: var(--green); }
+  .toast-error { background: rgba(230,57,70,0.15); border: 1px solid rgba(230,57,70,0.4); color: var(--red); }
+  .toast-info { background: rgba(30,60,150,0.4); border: 1px solid rgba(100,150,255,0.3); color: #a0b4ff; }
+
+  @media (max-width: 700px) {
+    .arena-inner { grid-template-columns: 1fr; gap: 20px; }
+    #arena-player-img { width: 140px; height: 170px; }
+    .arena-player-name { font-size: 40px; }
+    #client-current-bid { font-size: 48px; }
+    .timer-ring-wrap { position: static; text-align: left; margin-bottom: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="bg-fixed"></div>
+<div class="bg-grid"></div>
+<div id="toast-container"></div>
+
+<div class="wrapper">
+<header>
+  <div class="header-logo">IPL Auction</div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="bidder-badge">BIDDER</div>
+    <span id="client-name-label" style="font-size:13px;color:rgba(255,255,255,0.5);font-weight:600;"></span>
+    <a href="/logout" class="logout-btn">Exit</a>
+  </div>
+</header>
+
+<!-- WAITING ROOM -->
+<div id="waiting-room">
+  <div class="waiting-icon">🎯</div>
+  <div class="waiting-title">Auction Room</div>
+  <div class="waiting-sub">Waiting for admin to start auction...</div>
+</div>
+
+<!-- LIVE AUCTION ARENA -->
+<div id="auction-arena">
+  <div class="arena-hero">
+    <div class="timer-ring-wrap">
+      <div class="timer-ring">
+        <svg width="90" height="90" viewBox="0 0 90 90">
+          <circle class="timer-bg" cx="45" cy="45" r="38"/>
+          <circle id="timer-progress" cx="45" cy="45" r="38" stroke-dasharray="238.76" stroke-dashoffset="0"/>
+        </svg>
+        <div class="timer-text" id="timer-display">60</div>
+      </div>
+    </div>
+
+    <div class="arena-inner">
+      <div class="arena-player-img-wrap">
+        <div class="arena-img-bg" id="arena-team-bg"></div>
+        <img id="arena-player-img" src="" alt="">
+      </div>
+      <div class="arena-info">
+        <div class="arena-team-tag" id="arena-team-tag">—</div>
+        <div class="arena-player-name" id="arena-player-name">—</div>
+        <div class="arena-player-role" id="arena-player-role">—</div>
+        <div class="arena-stats-row">
+          <div class="arena-stat">
+            <div class="arena-stat-val" id="arena-sr">—</div>
+            <div class="arena-stat-label">Strike Rate</div>
+          </div>
+          <div class="arena-stat">
+            <div class="arena-stat-val" id="arena-base">—</div>
+            <div class="arena-stat-label">Base Price</div>
+          </div>
+        </div>
+
+        <div class="bid-display">
+          <span class="bid-currency">₹</span>
+          <span id="client-current-bid">0</span>
+          <span class="bid-suffix">L</span>
+        </div>
+        <div class="bid-meta">
+          <span id="client-bidder" style="color:rgba(255,255,255,0.4);">No bids yet</span>
+        </div>
+
+        <div class="bid-form-row">
+          <div class="bid-input-wrap">
+            <span class="bid-prefix">₹</span>
+            <input type="number" id="bid-input" placeholder="Enter bid">
+            <span class="bid-suffix-label">Lakhs</span>
+          </div>
+          <button class="place-bid-btn" id="place-bid-btn" onclick="placeBid()">
+            🔨 BID
+          </button>
+        </div>
+        <div class="quick-bids" id="quick-bids"></div>
+        <div id="bid-feedback"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="ended-banner">
+    <div class="ended-title">⚡ SOLD!</div>
+    <div class="ended-sub" id="sold-message">Waiting for next player...</div>
+  </div>
+</div>
+
+<!-- PLAYER ROSTER -->
+<div class="section-title">
+  <h2>Player Roster</h2>
+  <div class="section-line"></div>
+</div>
+<div class="players-grid" id="players-grid">
+  {% for p in players %}
+  <div class="player-card" id="pcard-{{ p.id }}">
+    <div class="card-team-bar" style="background: linear-gradient(90deg, {{ p.team_color.primary }}, {{ p.team_color.secondary }});"></div>
+    <div class="card-img-wrap" style="background: linear-gradient(180deg, {{ p.team_color.primary }}22 0%, rgba(0,0,0,0.3) 100%);">
+      <div class="card-team-logo" style="color: {{ p.team_color.accent }};">{{ p.team }}</div>
+      <img src="{{ p.image }}" alt="{{ p.name }}" onerror="this.src=''">
+    </div>
+    <div class="card-body">
+      <div class="card-name">{{ p.name }}</div>
+      <div class="card-role">{{ p.role }}</div>
+      <div class="card-strike">SR: {{ p.strike_rate }}</div>
+      <div class="card-prices">
+        <div class="price-block">
+          <div class="price-val">₹{{ p.base_price }}L</div>
+          <div class="price-label">Base</div>
+        </div>
+        <div class="price-block">
+          <div class="price-val" id="pcard-sold-{{ p.id }}">{% if p.auction_price > 0 %}₹{{ p.auction_price }}L{% else %}—{% endif %}</div>
+          <div class="price-label">Sold</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+</div>
+
+<script>
+let lastBid = 0;
+let lastStatus = 'idle';
+const CIRCUMFERENCE = 238.76;
+let maxTime = 60;
+
+function showToast(msg, type='info') {
+  const container = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.textContent = msg;
+  container.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+function setFeedback(msg, type) {
+  const el = document.getElementById('bid-feedback');
+  el.textContent = msg;
+  el.className = `feedback-${type}`;
+  setTimeout(() => { el.textContent = ''; }, 3000);
+}
+
+function updateQuickBids(current) {
+  const container = document.getElementById('quick-bids');
+  container.innerHTML = '';
+  const increments = [5, 10, 20, 50];
+  increments.forEach(inc => {
+    const newBid = current + inc;
+    const btn = document.createElement('button');
+    btn.className = 'quick-btn';
+    btn.textContent = `+${inc}L → ₹${newBid}L`;
+    btn.onclick = () => {
+      document.getElementById('bid-input').value = newBid;
+    };
+    container.appendChild(btn);
+  });
+}
+
+async function placeBid() {
+  const input = document.getElementById('bid-input');
+  const amount = parseInt(input.value);
+  if (!amount || amount <= 0) {
+    setFeedback('Enter a valid bid amount', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('place-bid-btn');
+  btn.disabled = true;
+  btn.textContent = 'Placing...';
+
+  try {
+    const res = await fetch('/bid', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bid_amount: amount })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`✅ Bid of ₹${amount}L placed!`, 'success');
+      setFeedback(`✅ Bid of ₹${amount}L accepted!`, 'success');
+      input.value = '';
+    } else {
+      showToast(data.error, 'error');
+      setFeedback(data.error, 'error');
+    }
+  } catch(e) {
+    setFeedback('Network error', 'error');
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🔨 BID';
+}
+
+function pollStatus() {
+  fetch('/auction_status')
+    .then(r => r.json())
+    .then(data => {
+      const arena = document.getElementById('auction-arena');
+      const waiting = document.getElementById('waiting-room');
+      const endedBanner = document.getElementById('ended-banner');
+
+      if (data.status === 'live' && data.player) {
+        arena.classList.add('visible');
+        waiting.style.display = 'none';
+        endedBanner.classList.remove('visible');
+
+        // Update player info
+        const p = data.player;
+        document.getElementById('arena-player-img').src = p.image;
+        document.getElementById('arena-player-name').textContent = p.name;
+        document.getElementById('arena-player-role').textContent = p.role;
+        document.getElementById('arena-sr').textContent = p.strike_rate;
+        document.getElementById('arena-base').textContent = '₹' + p.base_price + 'L';
+        document.getElementById('arena-team-tag').textContent = p.team;
+        document.getElementById('arena-team-tag').style.cssText =
+          `background: ${p.team_color.primary}33; border: 1px solid ${p.team_color.primary}55; color: ${p.team_color.accent};`;
+        document.getElementById('arena-team-bg').style.background = p.team_color.primary;
+
+        // Update bid
+        if (data.current_bid !== lastBid) {
+          const bidEl = document.getElementById('client-current-bid');
+          bidEl.classList.add('bid-up');
+          setTimeout(() => bidEl.classList.remove('bid-up'), 500);
+          lastBid = data.current_bid;
+        }
+        document.getElementById('client-current-bid').textContent = data.current_bid;
+        document.getElementById('client-bidder').textContent =
+          data.current_bidder ? `🏆 Leading: ${data.current_bidder}` : 'No bids yet — be first!';
+
+        updateQuickBids(data.current_bid);
+
+        // Timer
+        const secs = data.seconds_remaining;
+        const timerEl = document.getElementById('timer-display');
+        timerEl.textContent = secs;
+        timerEl.className = secs <= 10 ? 'timer-text urgent' : 'timer-text';
+
+        // Progress ring
+        const ratio = secs / maxTime;
+        const offset = CIRCUMFERENCE * (1 - ratio);
+        const ring = document.getElementById('timer-progress');
+        ring.style.strokeDashoffset = offset;
+        ring.style.stroke = secs <= 10 ? '#e63946' : '#FFD700';
+
+        document.getElementById('place-bid-btn').disabled = false;
+
+        // Highlight active player card
+        document.querySelectorAll('.player-card').forEach(c => c.classList.remove('active-now'));
+        document.getElementById('pcard-' + p.id)?.classList.add('active-now');
+
+      } else if (data.status === 'ended') {
+        endedBanner.classList.add('visible');
+        document.getElementById('place-bid-btn').disabled = true;
+        if (data.current_bidder) {
+          document.getElementById('sold-message').textContent =
+            `SOLD to ${data.current_bidder} for ₹${data.current_bid}L! Waiting for next player...`;
+        }
+        document.querySelectorAll('.player-card').forEach(c => c.classList.remove('active-now'));
+
+        // Refresh prices
+        fetch('/players_data').then(r => r.json()).then(players => {
+          players.forEach(p => {
+            const el = document.getElementById('pcard-sold-' + p.id);
+            if (el && p.auction_price > 0) el.textContent = '₹' + p.auction_price + 'L';
+          });
+        });
+
+      } else {
+        arena.classList.remove('visible');
+        waiting.style.display = 'flex';
+        endedBanner.classList.remove('visible');
+        lastBid = 0;
+        document.querySelectorAll('.player-card').forEach(c => c.classList.remove('active-now'));
+      }
+    });
+}
+
+// Allow Enter to bid
+document.getElementById('bid-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') placeBid();
+});
+
+setInterval(pollStatus, 1500);
+pollStatus();
+</script>
+</body>
+</html>
