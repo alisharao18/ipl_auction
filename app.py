@@ -39,6 +39,7 @@ auction_state = {
     "active": False,
     "current_player_id": None,
     "time_left": 0,
+    "full_duration": 60,
     "timer_running": False,
     "highest_bidder": None,
     "highest_bid": 0,
@@ -182,21 +183,27 @@ def start_auction():
     if not player:
         return jsonify({"error": "Player not found"}), 404
 
+    # Stop any existing timer thread before starting a new one
+    auction_state["timer_running"] = False
+    if auction_timer_thread and auction_timer_thread.is_alive():
+        auction_timer_thread.join(timeout=2)
+
     auction_state["active"] = True
     auction_state["current_player_id"] = player_id
     auction_state["time_left"] = duration
+    auction_state["full_duration"] = duration   # stored so late-joiners know the 100% mark
     auction_state["timer_running"] = True
     auction_state["highest_bidder"] = None
-    auction_state["highest_bid"] = player[6]
+    auction_state["highest_bid"] = int(player[6])   # cast Decimal→int immediately
     auction_state["sold_to"] = None
 
     socketio.emit("auction_started", {
         "player_id": player_id,
         "player_name": player[1],
-        "team": player[2],
-        "role": player[3],
-        "strike_rate": player[4],
-        "base_price": player[6],
+        "ipl_team": player[2],        # renamed key to avoid clash with Flask 'team'
+        "player_role": player[3],
+        "strike_rate": float(player[4]),   # fix: Decimal → float for JSON
+        "base_price": int(player[6]),      # fix: ensure int not Decimal
         "time_left": duration,
     }, room="auction_room", namespace="/")
 
@@ -242,13 +249,14 @@ def get_auction_state():
         "active": True,
         "player_id": pid,
         "player_name": player[1] if player else "",
-        "team": player[2] if player else "",
-        "role": player[3] if player else "",
+        "ipl_team": player[2] if player else "",
+        "player_role": player[3] if player else "",
         "strike_rate": float(player[4]) if player else 0,
-        "base_price": auction_state["highest_bid"],
+        "base_price": int(auction_state["highest_bid"]),
         "time_left": auction_state["time_left"],
         "highest_bidder": auction_state["highest_bidder"],
-        "highest_bid": auction_state["highest_bid"],
+        "highest_bid": int(auction_state["highest_bid"]),
+        "full_duration": auction_state["full_duration"],
     })
 
 
@@ -267,7 +275,14 @@ def on_bid(data):
         emit("bid_error", {"message": "No active auction"})
         return
 
-    team = data.get("team")
+    # Read team from server-side token — never trust client-sent team name
+    token = data.get("token", "")
+    user = active_tokens.get(token, {})
+    team = user.get("team")
+    if not team or user.get("role") != "client":
+        emit("bid_error", {"message": "Invalid session"})
+        return
+
     bid_amount = int(data.get("bid_amount", 0))
     current_highest = auction_state["highest_bid"]
 
@@ -279,7 +294,6 @@ def on_bid(data):
         emit("bid_error", {"message": "Insufficient budget"})
         return
 
-    # Extend timer by 10s if bid placed in last 10s
     if auction_state["time_left"] < 10:
         auction_state["time_left"] = 10
 
@@ -290,7 +304,7 @@ def on_bid(data):
         "team": team,
         "bid_amount": bid_amount,
         "time_left": auction_state["time_left"],
-    }, room="auction_room")
+    }, room="auction_room", namespace="/")
 
 
 if __name__ == "__main__":
