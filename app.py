@@ -4,10 +4,15 @@ import psycopg2
 import os
 import time
 import threading
+import secrets
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ipl_auction_secret_2024")
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Token store: { token: { "role": "admin"/"client", "team": "MI"/... } }
+# This replaces cookie-based sessions so each browser tab is independent
+active_tokens = {}
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -119,9 +124,9 @@ def home():
 def admin_login():
     password = request.form.get("password")
     if password == os.environ.get("ADMIN_PASSWORD", "admin123"):
-        session["role"] = "admin"
-        session["team"] = "ADMIN"
-        return redirect("/dashboard")
+        token = secrets.token_urlsafe(16)
+        active_tokens[token] = {"role": "admin", "team": "ADMIN"}
+        return redirect(f"/dashboard?token={token}")
     return render_template("app.html", error="Invalid admin password")
 
 
@@ -130,29 +135,33 @@ def team_login():
     team = request.form.get("team").upper()
     password = request.form.get("password")
     if team in TEAM_CREDENTIALS and TEAM_CREDENTIALS[team] == password:
-        session["role"] = "client"
-        session["team"] = team
-        return redirect("/dashboard")
+        token = secrets.token_urlsafe(16)
+        active_tokens[token] = {"role": "client", "team": team}
+        return redirect(f"/dashboard?token={token}")
     return render_template("app.html", error="Invalid team credentials")
 
 
 @app.route("/logout")
 def logout():
-    session.clear()
+    token = request.args.get("token", "")
+    active_tokens.pop(token, None)
     return redirect("/")
 
 
 @app.route("/dashboard")
 def dashboard():
-    if "role" not in session:
+    token = request.args.get("token", "")
+    user = active_tokens.get(token)
+    if not user:
         return redirect("/")
     players = get_players()
-    role = session["role"]
-    team = session["team"]
+    role = user["role"]
+    team = user["team"]
     budget = TEAM_BUDGETS.get(team, 0)
     return render_template("app.html",
                            role=role,
                            team=team,
+                           token=token,
                            players=players,
                            budget=budget,
                            auction_state=auction_state)
@@ -162,7 +171,8 @@ def dashboard():
 
 @app.route("/admin/start-auction", methods=["POST"])
 def start_auction():
-    if session.get("role") != "admin":
+    token = request.json.get("token", "")
+    if active_tokens.get(token, {}).get("role") != "admin":
         return jsonify({"error": "Unauthorized"}), 403
     global auction_timer_thread
     data = request.json
@@ -178,7 +188,7 @@ def start_auction():
     auction_state["time_left"] = duration
     auction_state["timer_running"] = True
     auction_state["highest_bidder"] = None
-    auction_state["highest_bid"] = player[6]  # current auction_price
+    auction_state["highest_bid"] = player[6]
     auction_state["sold_to"] = None
 
     socketio.emit("auction_started", {
@@ -199,7 +209,8 @@ def start_auction():
 
 @app.route("/admin/stop-auction", methods=["POST"])
 def stop_auction():
-    if session.get("role") != "admin":
+    token = request.json.get("token", "")
+    if active_tokens.get(token, {}).get("role") != "admin":
         return jsonify({"error": "Unauthorized"}), 403
     auction_state["timer_running"] = False
     auction_state["active"] = False
@@ -209,10 +220,10 @@ def stop_auction():
 
 @app.route("/admin/reset-player", methods=["POST"])
 def reset_player():
-    if session.get("role") != "admin":
+    token = request.json.get("token", "")
+    if active_tokens.get(token, {}).get("role") != "admin":
         return jsonify({"error": "Unauthorized"}), 403
-    data = request.json
-    player_id = data.get("player_id")
+    player_id = request.json.get("player_id")
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("UPDATE players SET sold_to=NULL WHERE id=%s", (player_id,))
