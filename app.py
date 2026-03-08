@@ -8,7 +8,7 @@ import secrets
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ipl_auction_secret_2024")
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 # Token store: { token: { "role": "admin"/"client", "team": "MI"/... } }
 # This replaces cookie-based sessions so each browser tab is independent
@@ -50,7 +50,7 @@ auction_timer_thread = None
 
 
 def get_conn():
-    return psycopg2.connect(DATABASE_URL)
+    return psycopg2.connect(DATABASE_URL, sslmode="require")
 
 
 def get_players():
@@ -180,7 +180,7 @@ def start_auction():
 
     global auction_timer_thread
 
-    player_id = data.get("player_id")
+    player_id = int(data.get("player_id"))
     duration = int(data.get("duration", 60))
 
     player = get_player(player_id)
@@ -313,4 +313,5 @@ def on_bid(data):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     socketio.run(app, host="0.0.0.0", port=port)
+
 
