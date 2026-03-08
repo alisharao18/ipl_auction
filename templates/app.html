@@ -1149,7 +1149,7 @@ tbody tr:last-child td { border-bottom: none; }
           {% for p in players %}
           <div class="player-row {% if p[7] %}sold{% endif %}"
                id="pRow-{{ p[0] }}"
-               onclick="selectPlayer({{ p[0] }}, '{{ p[1] }}', '{{ p[2] }}', '{{ p[3] }}', '{{ p[4] }}', {{ p[5] }})">
+               onclick="selectPlayer({{ p[0] }}, '{{ p[1] }}', '{{ p[2] }}', '{{ p[3] }}', '{{ p[4] }}', {{ p[6] }})">
             <div style="font-size:24px;">
               {% if p[3] == 'Batsman' %}🏏
               {% elif p[3] == 'Bowler' %}🎯
@@ -1157,7 +1157,7 @@ tbody tr:last-child td { border-bottom: none; }
             </div>
             <div class="player-row-info">
               <div class="player-row-name">{{ p[1] }}</div>
-              <div class="player-row-meta">{{ p[2] }} • {{ p[3] }} • ₹{{ p[5] }}L</div>
+              <div class="player-row-meta">{{ p[2] }} • {{ p[3] }} • ₹{{ p[6] }}L</div>
             </div>
             {% if p[7] %}<span class="sold-badge">SOLD</span>{% endif %}
           </div>
@@ -1338,28 +1338,42 @@ let currentPlayerId = null;
 let currentPrice = 0;
 
 // ── Socket connection: join room, then sync current state
-socket.on("connect", () => {
-  socket.emit("join", {}, () => {
-    fetch("/auction-state")
-      .then(r => r.json())
-      .then(data => {
-        if (data.active) {
-          // Use full_duration as timerMax so bar is correctly scaled
+let auctionLive = false;
+
+function syncAuctionState() {
+  fetch("/auction-state")
+    .then(r => r.json())
+    .then(data => {
+      if (data.active) {
+        if (!auctionLive) {
+          // First time seeing this auction — do full init
+          auctionLive = true;
           timerMax = data.full_duration || data.time_left;
           handleAuctionStarted(data);
-          // Override with live values after handleAuctionStarted sets base_price
-          if (data.highest_bidder) {
-            document.getElementById("livePrice").textContent = data.highest_bid;
-            document.getElementById("liveBidder").textContent = "▲ " + data.highest_bidder;
-            currentPrice = data.highest_bid;
-          }
-          document.getElementById("timerCount").textContent = data.time_left;
-          const pct = (data.time_left / timerMax) * 100;
-          document.getElementById("timerFill").style.width = pct + "%";
         }
-      });
+        // Always keep currentPrice in sync with server (catches missed bids)
+        if (data.highest_bid > currentPrice) {
+          currentPrice = data.highest_bid;
+          document.getElementById("livePrice").textContent = data.highest_bid;
+        }
+        if (data.highest_bidder) {
+          document.getElementById("liveBidder").textContent = "▲ " + data.highest_bidder;
+        }
+      } else if (!data.active) {
+        auctionLive = false;
+      }
+    })
+    .catch(() => {});
+}
+
+socket.on("connect", () => {
+  socket.emit("join", {}, () => {
+    syncAuctionState();
   });
 });
+
+// Poll every 2 seconds as fallback in case socket event was missed
+setInterval(syncAuctionState, 2000);
 
 // ── Admin: select player
 let selectedPlayerId = null;
@@ -1448,7 +1462,10 @@ function handleAuctionStarted(data) {
   addFeed("SYSTEM", null, "🔔 Auction started for " + data.player_name, null);
 }
 
-socket.on("auction_started", handleAuctionStarted);
+socket.on("auction_started", (data) => {
+  auctionLive = true;
+  handleAuctionStarted(data);
+});
 
 socket.on("timer_update", (data) => {
   const t = data.time_left;
@@ -1479,6 +1496,7 @@ socket.on("new_bid", (data) => {
 });
 
 socket.on("auction_ended", (data) => {
+  auctionLive = false;
   document.getElementById("idleState").style.display = "block";
   document.getElementById("liveState").style.display = "none";
   document.getElementById("timerFill").style.width = "0%";
@@ -1512,6 +1530,7 @@ socket.on("auction_ended", (data) => {
 });
 
 socket.on("auction_stopped", () => {
+  auctionLive = false;
   document.getElementById("idleState").style.display = "block";
   document.getElementById("liveState").style.display = "none";
   addFeed("SYSTEM", null, "⛔ Auction stopped by admin", null);
