@@ -1,5 +1,5 @@
-from flask import Flask, render_template, request, redirect, session, url_for, jsonify
-from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask import Flask, render_template, request, redirect, jsonify
+from flask_socketio import SocketIO, emit, join_room
 import psycopg2
 import os
 import time
@@ -10,13 +10,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ipl_auction_secret_2024")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
-# Token store: { token: { "role": "admin"/"client", "team": "MI"/... } }
-# This replaces cookie-based sessions so each browser tab is independent
-active_tokens = {}
-
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# Team credentials (team_name: password)
 TEAM_CREDENTIALS = {
     "MI":  "mi123",
     "RCB": "rcb123",
@@ -25,7 +20,6 @@ TEAM_CREDENTIALS = {
     "KKR": "kkr123",
 }
 
-# Team budgets (in Lakhs)
 TEAM_BUDGETS = {
     "MI":  10000,
     "RCB": 10000,
@@ -34,7 +28,6 @@ TEAM_BUDGETS = {
     "KKR": 10000,
 }
 
-# Auction state (in-memory)
 auction_state = {
     "active": False,
     "current_player_id": None,
@@ -49,8 +42,56 @@ auction_state = {
 auction_timer_thread = None
 
 
+# ─── DB HELPERS ────────────────────────────────────────────
+
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
+
+
+def init_db():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            token VARCHAR(64) PRIMARY KEY,
+            role  VARCHAR(10) NOT NULL,
+            team  VARCHAR(10) NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def token_set(token, role, team):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO sessions (token, role, team) VALUES (%s, %s, %s) "
+        "ON CONFLICT (token) DO UPDATE SET role=%s, team=%s",
+        (token, role, team, role, team)
+    )
+    conn.commit()
+    conn.close()
+
+
+def token_get(token):
+    if not token:
+        return None
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT role, team FROM sessions WHERE token=%s", (token,))
+    row = cur.fetchone()
+    conn.close()
+    return {"role": row[0], "team": row[1]} if row else None
+
+
+def token_delete(token):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM sessions WHERE token=%s", (token,))
+    conn.commit()
+    conn.close()
 
 
 def get_players():
@@ -81,6 +122,8 @@ def update_auction_price(player_id, price, team):
     conn.commit()
     conn.close()
 
+
+# ─── TIMER ─────────────────────────────────────────────────
 
 def run_auction_timer():
     global auction_state
@@ -125,7 +168,7 @@ def admin_login():
     password = request.form.get("password")
     if password == os.environ.get("ADMIN_PASSWORD", "admin123"):
         token = secrets.token_urlsafe(16)
-        active_tokens[token] = {"role": "admin", "team": "ADMIN"}
+        token_set(token, "admin", "ADMIN")
         return redirect(f"/dashboard?token={token}")
     return render_template("app.html", error="Invalid admin password")
 
@@ -136,7 +179,7 @@ def team_login():
     password = request.form.get("password")
     if team in TEAM_CREDENTIALS and TEAM_CREDENTIALS[team] == password:
         token = secrets.token_urlsafe(16)
-        active_tokens[token] = {"role": "client", "team": team}
+        token_set(token, "client", team)
         return redirect(f"/dashboard?token={token}")
     return render_template("app.html", error="Invalid team credentials")
 
@@ -144,14 +187,14 @@ def team_login():
 @app.route("/logout")
 def logout():
     token = request.args.get("token", "")
-    active_tokens.pop(token, None)
+    token_delete(token)
     return redirect("/")
 
 
 @app.route("/dashboard")
 def dashboard():
     token = request.args.get("token", "")
-    user = active_tokens.get(token)
+    user = token_get(token)
     if not user:
         return redirect("/")
     players = get_players()
@@ -167,19 +210,17 @@ def dashboard():
                            auction_state=auction_state)
 
 
-# ─── ADMIN API ──────────────────────────────────────────────
+# ─── ADMIN API ─────────────────────────────────────────────
 
 @app.route("/admin/start-auction", methods=["POST"])
 def start_auction():
-
     data = request.get_json(force=True)
-
     token = data.get("token", "")
-    if active_tokens.get(token, {}).get("role") != "admin":
+    user = token_get(token)
+    if not user or user["role"] != "admin":
         return jsonify({"error": "Unauthorized"}), 403
 
     global auction_timer_thread
-
     player_id = int(data.get("player_id"))
     duration = int(data.get("duration", 60))
 
@@ -208,7 +249,7 @@ def start_auction():
         "strike_rate": float(player[4]),
         "base_price": int(player[5]),
         "time_left": duration,
-    }, room="auction_room")
+    }, room="auction_room", namespace="/")
 
     auction_timer_thread = threading.Thread(target=run_auction_timer, daemon=True)
     auction_timer_thread.start()
@@ -218,8 +259,10 @@ def start_auction():
 
 @app.route("/admin/stop-auction", methods=["POST"])
 def stop_auction():
-    token = request.json.get("token", "")
-    if active_tokens.get(token, {}).get("role") != "admin":
+    data = request.get_json(force=True)
+    token = data.get("token", "")
+    user = token_get(token)
+    if not user or user["role"] != "admin":
         return jsonify({"error": "Unauthorized"}), 403
     auction_state["timer_running"] = False
     auction_state["active"] = False
@@ -229,19 +272,20 @@ def stop_auction():
 
 @app.route("/admin/reset-player", methods=["POST"])
 def reset_player():
-    token = request.json.get("token", "")
-    if active_tokens.get(token, {}).get("role") != "admin":
+    data = request.get_json(force=True)
+    token = data.get("token", "")
+    user = token_get(token)
+    if not user or user["role"] != "admin":
         return jsonify({"error": "Unauthorized"}), 403
-    player_id = request.json.get("player_id")
+    player_id = data.get("player_id")
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("UPDATE players SET sold_to=NULL WHERE id=%s", (player_id,))
+    cur.execute("UPDATE players SET sold_to=NULL, auction_price=0 WHERE id=%s", (player_id,))
     conn.commit()
     conn.close()
     return jsonify({"status": "reset"})
 
 
-# State sync — client calls this after joining to catch up if auction already running
 @app.route("/auction-state")
 def get_auction_state():
     if not auction_state["active"]:
@@ -263,13 +307,13 @@ def get_auction_state():
     })
 
 
-# ─── SOCKETIO ───────────────────────────────────────────────
+# ─── SOCKETIO ──────────────────────────────────────────────
 
 @socketio.on("join")
 def on_join(data):
     join_room("auction_room")
     emit("joined", {"status": "ok"})
-    return {"status": "ok"}   # ← this is the ack returned to socket.emit("join", {}, callback)
+    return {"status": "ok"}
 
 
 @socketio.on("place_bid")
@@ -278,19 +322,18 @@ def on_bid(data):
         emit("bid_error", {"message": "No active auction"})
         return
 
-    # Read team from server-side token — never trust client-sent team name
     token = data.get("token", "")
-    user = active_tokens.get(token, {})
-    team = user.get("team")
-    if not team or user.get("role") != "client":
+    user = token_get(token)
+    if not user or user["role"] != "client":
         emit("bid_error", {"message": "Invalid session"})
         return
 
+    team = user["team"]
     bid_amount = int(data.get("bid_amount", 0))
     current_highest = auction_state["highest_bid"]
 
     if bid_amount <= current_highest:
-        emit("bid_error", {"message": f"Bid must be higher than ₹{current_highest}L"})
+        emit("bid_error", {"message": f"Bid must be higher than Rs.{current_highest}L"})
         return
 
     if team not in TEAM_BUDGETS or TEAM_BUDGETS[team] < bid_amount:
@@ -303,12 +346,16 @@ def on_bid(data):
     auction_state["highest_bid"] = bid_amount
     auction_state["highest_bidder"] = team
 
-    emit("new_bid", {
+    socketio.emit("new_bid", {
         "team": team,
         "bid_amount": bid_amount,
         "time_left": auction_state["time_left"],
-    }, room="auction_room")
+    }, room="auction_room", namespace="/")
 
+
+# ─── STARTUP ───────────────────────────────────────────────
+
+init_db()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
