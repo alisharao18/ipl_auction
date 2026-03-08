@@ -1286,7 +1286,7 @@ tbody tr:last-child td { border-bottom: none; }
             <tr id="tableRow-{{ p[0] }}">
               <td class="td-name">{{ p[1] }}<br><span style="font-size:11px; color: var(--muted); font-family: var(--font-mono);">{{ p[2] }}</span></td>
               <td><span class="td-role">{{ p[3] }}</span></td>
-              <td class="td-price" id="tablePrice-{{ p[0] }}">₹{{ p[6] }}L</td>
+              <td class="td-price" id="tablePrice-{{ p[0] }}">₹{{ p[6] if p[6] else p[5] }}L</td>
               <td>
                 {% if p[7] %}
                   <span class="td-sold">{{ p[7] }}</span>
