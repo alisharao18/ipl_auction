@@ -1,1572 +1,247 @@
 <!DOCTYPE html>
 <html lang="en">
+ 
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>IPL Auction Live</title>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
-
+<title>IPL Auction System</title>
+ 
 <style>
-:root {
-  --gold: #FFD700;
-  --gold-dim: #b8960a;
-  --red: #e63946;
-  --green: #2ec4b6;
-  --bg: #07080d;
-  --bg2: #0d0f1a;
-  --bg3: #131629;
-  --border: rgba(255,215,0,0.15);
-  --text: #e8e8f0;
-  --muted: #6b6f8a;
-  --font-display: 'Bebas Neue', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+ 
+body{
+    font-family: Arial, sans-serif;
+    background: linear-gradient(120deg,#1e3c72,#2a5298);
+    margin:0;
+    padding:0;
+    color:white;
+}
+ 
+header{
+    background:#111;
+    padding:20px;
+    text-align:center;
+    font-size:30px;
+    font-weight:bold;
+    letter-spacing:2px;
+}
+ 
+.container{
+    width:85%;
+    margin:auto;
+    margin-top:40px;
+}
+ 
+.card{
+    background:white;
+    color:black;
+    padding:30px;
+    border-radius:10px;
+    box-shadow:0 5px 15px rgba(0,0,0,0.3);
+}
+ 
+h2{
+    text-align:center;
+    margin-bottom:20px;
+}
+ 
+table{
+    width:100%;
+    border-collapse:collapse;
+}
+ 
+th{
+    background:#1e3c72;
+    color:white;
+    padding:12px;
+}
+ 
+td{
+    padding:10px;
+    text-align:center;
+}
+ 
+tr:nth-child(even){
+    background:#f2f2f2;
+}
+ 
+tr:nth-child(odd){
+    background:#ffffff;
+}
+ 
+button{
+    padding:8px 15px;
+    border:none;
+    border-radius:5px;
+    background:#28a745;
+    color:white;
+    font-weight:bold;
+    cursor:pointer;
+}
+ 
+button:hover{
+    background:#218838;
+}
+ 
+input[type="number"]{
+    padding:6px;
+    border-radius:5px;
+    border:1px solid gray;
+}
+ 
+select{
+    padding:10px;
+    border-radius:5px;
+}
+ 
+.login-box{
+    width:350px;
+    margin:auto;
+    text-align:center;
+}
+ 
+.login-btn{
+    margin-top:15px;
+    width:100%;
+    background:#1e3c72;
+}
+ 
+.login-btn:hover{
+    background:#16315c;
+}
+ 
+.price{
+    font-weight:bold;
+    color:#d60000;
 }
-
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
-body {
-  font-family: var(--font-body);
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  overflow-x: hidden;
-}
-
-/* Background grid */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(255,215,0,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,215,0,0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* ── HEADER ── */
-header {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: rgba(7,8,13,0.95);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--border);
-  padding: 0 40px;
-  height: 64px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.logo {
-  font-family: var(--font-display);
-  font-size: 28px;
-  letter-spacing: 3px;
-  background: linear-gradient(135deg, var(--gold), #fff8dc, var(--gold));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.header-badge {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.live-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--red);
-  animation: pulse 1.2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(1.4); }
-}
-
-.team-pill {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 4px 12px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  color: var(--gold);
-  letter-spacing: 1px;
-}
-
-.logout-btn {
-  background: transparent;
-  border: 1px solid rgba(255,255,255,0.1);
-  color: var(--muted);
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-family: var(--font-body);
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.logout-btn:hover { border-color: var(--red); color: var(--red); }
-
-/* ── LOGIN PAGE ── */
-.login-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  z-index: 1;
-}
-
-.login-wrap {
-  width: 100%;
-  max-width: 900px;
-  padding: 40px;
-}
-
-.login-title {
-  font-family: var(--font-display);
-  font-size: 72px;
-  letter-spacing: 6px;
-  line-height: 1;
-  text-align: center;
-  margin-bottom: 8px;
-  background: linear-gradient(135deg, var(--gold) 0%, #fff 50%, var(--gold) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.login-sub {
-  text-align: center;
-  color: var(--muted);
-  font-size: 14px;
-  letter-spacing: 4px;
-  text-transform: uppercase;
-  margin-bottom: 60px;
-}
-
-.login-cards {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-}
-
-.login-card {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 36px;
-  position: relative;
-  overflow: hidden;
-  transition: border-color 0.3s, transform 0.2s;
-}
-
-.login-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--gold), transparent);
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.login-card:hover {
-  border-color: rgba(255,215,0,0.3);
-  transform: translateY(-2px);
-}
-.login-card:hover::before { opacity: 1; }
-
-.card-icon {
-  font-size: 40px;
-  margin-bottom: 16px;
-  display: block;
-}
-
-.card-label {
-  font-family: var(--font-display);
-  font-size: 28px;
-  letter-spacing: 2px;
-  color: var(--gold);
-  margin-bottom: 6px;
-}
-
-.card-desc {
-  font-size: 13px;
-  color: var(--muted);
-  margin-bottom: 28px;
-  line-height: 1.5;
-}
-
-.field-group {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.field-group select,
-.field-group input {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-family: var(--font-body);
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.2s;
-  appearance: none;
-  width: 100%;
-}
-
-.field-group select:focus,
-.field-group input:focus {
-  border-color: rgba(255,215,0,0.5);
-}
-
-.field-group select option {
-  background: var(--bg3);
-  color: var(--text);
-}
-
-.btn-primary {
-  width: 100%;
-  padding: 14px;
-  background: linear-gradient(135deg, #b8960a, var(--gold));
-  color: #000;
-  font-family: var(--font-display);
-  font-size: 18px;
-  letter-spacing: 2px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-top: 4px;
-}
-
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(255,215,0,0.25);
-}
-
-.error-msg {
-  background: rgba(230,57,70,0.12);
-  border: 1px solid rgba(230,57,70,0.3);
-  color: #ff6b6b;
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  margin-bottom: 24px;
-  text-align: center;
-}
-
-/* ── LAYOUT ── */
-.page {
-  position: relative;
-  z-index: 1;
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 32px 40px;
-}
-
-.grid-2 {
-  display: grid;
-  grid-template-columns: 1fr 360px;
-  gap: 24px;
-  align-items: start;
-}
-
-/* ── SECTION HEADERS ── */
-.section-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 12px;
-}
-
-.section-title {
-  font-family: var(--font-display);
-  font-size: 32px;
-  letter-spacing: 2px;
-  color: var(--gold);
-  margin-bottom: 24px;
-}
-
-/* ── AUCTION SPOTLIGHT ── */
-.auction-spotlight {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 32px;
-  position: relative;
-  overflow: hidden;
-  margin-bottom: 24px;
-}
-
-.auction-spotlight::after {
-  content: '';
-  position: absolute;
-  top: -60px; right: -60px;
-  width: 200px; height: 200px;
-  background: radial-gradient(circle, rgba(255,215,0,0.08), transparent 70%);
-  pointer-events: none;
-}
-
-.spotlight-idle {
-  text-align: center;
-  padding: 60px 0;
-}
-
-.idle-icon { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
-.idle-text {
-  font-family: var(--font-display);
-  font-size: 24px;
-  letter-spacing: 2px;
-  color: var(--muted);
-}
-
-.player-card-live {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 32px;
-  align-items: center;
-}
-
-.player-avatar {
-  width: 100px; height: 100px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--bg3), var(--bg));
-  border: 2px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 44px;
-  flex-shrink: 0;
-}
-
-.player-name-live {
-  font-family: var(--font-display);
-  font-size: 42px;
-  letter-spacing: 2px;
-  line-height: 1;
-  margin-bottom: 8px;
-}
-
-.player-meta {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.meta-tag {
-  font-size: 11px;
-  font-family: var(--font-mono);
-  letter-spacing: 1px;
-  padding: 3px 10px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  color: var(--muted);
-}
-
-.meta-tag.role { border-color: rgba(46,196,182,0.3); color: var(--green); }
-.meta-tag.team { border-color: rgba(255,215,0,0.3); color: var(--gold); }
-
-.auction-price-block {
-  text-align: right;
-}
-
-.price-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: var(--muted);
-  text-transform: uppercase;
-  margin-bottom: 4px;
-}
-
-.price-value {
-  font-family: var(--font-display);
-  font-size: 48px;
-  letter-spacing: 2px;
-  color: var(--gold);
-  line-height: 1;
-}
-
-.price-unit {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  color: var(--muted);
-}
-
-.bidder-name {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--green);
-  letter-spacing: 1px;
-  margin-top: 4px;
-}
-
-/* ── TIMER ── */
-.timer-bar-wrap {
-  margin-top: 28px;
-}
-
-.timer-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.timer-label {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 2px;
-  color: var(--muted);
-}
-
-.timer-count {
-  font-family: var(--font-display);
-  font-size: 36px;
-  letter-spacing: 3px;
-  color: var(--gold);
-  transition: color 0.3s;
-}
-
-.timer-count.urgent { color: var(--red); animation: shake 0.3s infinite; }
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-2px); }
-  75% { transform: translateX(2px); }
-}
-
-.timer-bar {
-  height: 4px;
-  background: var(--bg3);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.timer-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--green), var(--gold));
-  border-radius: 2px;
-  transition: width 1s linear, background 0.5s;
-}
-
-.timer-fill.urgent {
-  background: linear-gradient(90deg, var(--red), #ff6b6b);
-}
-
-/* ── BID INPUT (CLIENT) ── */
-.bid-panel {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 28px;
-  margin-bottom: 24px;
-}
-
-.bid-input-row {
-  display: flex;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.bid-input {
-  flex: 1;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 14px 18px;
-  border-radius: 8px;
-  font-family: var(--font-mono);
-  font-size: 16px;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.bid-input:focus { border-color: rgba(255,215,0,0.5); }
-
-.btn-bid {
-  padding: 14px 28px;
-  background: linear-gradient(135deg, #0a7a5a, var(--green));
-  color: #000;
-  font-family: var(--font-display);
-  font-size: 18px;
-  letter-spacing: 2px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.btn-bid:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(46,196,182,0.25); }
-.btn-bid:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-
-.quick-bids {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  flex-wrap: wrap;
-}
-
-.quick-bid-btn {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--muted);
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.quick-bid-btn:hover {
-  border-color: rgba(255,215,0,0.4);
-  color: var(--gold);
-}
-
-.bid-feedback {
-  margin-top: 12px;
-  font-size: 13px;
-  padding: 10px 14px;
-  border-radius: 6px;
-  display: none;
-}
-
-.bid-feedback.success {
-  background: rgba(46,196,182,0.1);
-  border: 1px solid rgba(46,196,182,0.3);
-  color: var(--green);
-  display: block;
-}
-
-.bid-feedback.error {
-  background: rgba(230,57,70,0.1);
-  border: 1px solid rgba(230,57,70,0.3);
-  color: #ff6b6b;
-  display: block;
-}
-
-/* ── FEED ── */
-.feed-panel {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 24px;
-  height: 280px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.feed-inner {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column-reverse;
-}
-
-.feed-inner::-webkit-scrollbar { width: 4px; }
-.feed-inner::-webkit-scrollbar-track { background: transparent; }
-.feed-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-.feed-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
-  font-size: 13px;
-  animation: slideIn 0.3s ease;
-}
-
-@keyframes slideIn {
-  from { opacity: 0; transform: translateX(-10px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-.feed-time {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--muted);
-  min-width: 55px;
-}
-
-.feed-team {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(255,215,0,0.1);
-  color: var(--gold);
-  border: 1px solid rgba(255,215,0,0.2);
-}
-
-.feed-text { color: var(--text); flex: 1; }
-.feed-amount {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--green);
-  font-weight: 700;
-}
-
-.feed-system {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-  letter-spacing: 1px;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
-}
-
-/* ── ADMIN PANEL ── */
-.admin-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.panel-box {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 24px;
-}
-
-.panel-box h3 {
-  font-family: var(--font-display);
-  font-size: 18px;
-  letter-spacing: 1px;
-  color: var(--gold);
-  margin-bottom: 16px;
-}
-
-.player-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 360px;
-  overflow-y: auto;
-}
-
-.player-list::-webkit-scrollbar { width: 4px; }
-.player-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-.player-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: var(--bg3);
-  border-radius: 8px;
-  border: 1px solid transparent;
-  transition: border-color 0.2s;
-  cursor: pointer;
-}
-
-.player-row:hover { border-color: var(--border); }
-.player-row.active { border-color: rgba(255,215,0,0.4); background: rgba(255,215,0,0.05); }
-.player-row.sold { opacity: 0.5; }
-
-.player-row-info { flex: 1; min-width: 0; }
-.player-row-name {
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.player-row-meta {
-  font-size: 11px;
-  color: var(--muted);
-  font-family: var(--font-mono);
-}
-
-.sold-badge {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 1px;
-  padding: 2px 7px;
-  border-radius: 10px;
-  background: rgba(46,196,182,0.15);
-  color: var(--green);
-  border: 1px solid rgba(46,196,182,0.3);
-}
-
-.auction-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.duration-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
-}
-
-.duration-row label {
-  font-size: 12px;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  white-space: nowrap;
-}
-
-.duration-row input {
-  flex: 1;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  outline: none;
-}
-
-.btn-start {
-  width: 100%;
-  padding: 12px;
-  background: linear-gradient(135deg, #0a7a5a, var(--green));
-  color: #000;
-  font-family: var(--font-display);
-  font-size: 16px;
-  letter-spacing: 2px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-start:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(46,196,182,0.2); }
-
-.btn-stop {
-  width: 100%;
-  padding: 12px;
-  background: rgba(230,57,70,0.15);
-  border: 1px solid rgba(230,57,70,0.3);
-  color: var(--red);
-  font-family: var(--font-display);
-  font-size: 16px;
-  letter-spacing: 2px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-stop:hover { background: rgba(230,57,70,0.25); }
-
-/* ── PLAYERS TABLE ── */
-.table-wrap {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  overflow: hidden;
-}
-
-table { width: 100%; border-collapse: collapse; }
-
-thead th {
-  background: var(--bg3);
-  padding: 14px 20px;
-  text-align: left;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--muted);
-  font-weight: 400;
-  border-bottom: 1px solid var(--border);
-}
-
-tbody td {
-  padding: 14px 20px;
-  font-size: 14px;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
-}
-
-tbody tr:hover { background: rgba(255,255,255,0.02); }
-tbody tr:last-child td { border-bottom: none; }
-
-.td-name { font-weight: 600; }
-.td-team {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--gold);
-}
-
-.td-role {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 3px 10px;
-  border-radius: 20px;
-  border: 1px solid rgba(46,196,182,0.25);
-  color: var(--green);
-  display: inline-block;
-}
-
-.td-price {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--gold);
-}
-
-.td-sold {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--green);
-}
-
-.td-unsold { color: var(--muted); font-size: 12px; }
-
-/* ── SOLD OVERLAY ── */
-.sold-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.85);
-  z-index: 999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(10px);
-  animation: fadeIn 0.3s ease;
-  display: none;
-}
-
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-.sold-card {
-  text-align: center;
-  padding: 60px 80px;
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 24px;
-  position: relative;
-  overflow: hidden;
-  animation: scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes scaleIn {
-  from { transform: scale(0.8); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
-}
-
-.sold-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 50% 0%, rgba(255,215,0,0.1), transparent 70%);
-  pointer-events: none;
-}
-
-.sold-label {
-  font-family: var(--font-display);
-  font-size: 80px;
-  letter-spacing: 10px;
-  background: linear-gradient(135deg, var(--gold), #fff);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  margin-bottom: 8px;
-}
-
-.sold-player { font-size: 20px; color: var(--muted); margin-bottom: 20px; }
-.sold-team {
-  font-family: var(--font-display);
-  font-size: 48px;
-  letter-spacing: 4px;
-  color: var(--green);
-  margin-bottom: 12px;
-}
-
-.sold-price {
-  font-family: var(--font-mono);
-  font-size: 28px;
-  color: var(--gold);
-}
-
-.sold-close {
-  margin-top: 32px;
-  padding: 12px 40px;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-family: var(--font-display);
-  font-size: 18px;
-  letter-spacing: 2px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.sold-close:hover { border-color: rgba(255,215,0,0.4); color: var(--gold); }
-
-/* ── UNSOLD OVERLAY ── */
-.unsold-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.85);
-  z-index: 999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(10px);
-  display: none;
-}
-
-.unsold-card {
-  text-align: center;
-  padding: 60px 80px;
-  background: var(--bg2);
-  border: 1px solid rgba(230,57,70,0.3);
-  border-radius: 24px;
-  animation: scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.unsold-label {
-  font-family: var(--font-display);
-  font-size: 80px;
-  letter-spacing: 10px;
-  color: var(--red);
-  margin-bottom: 12px;
-}
-
-.unsold-player { font-size: 20px; color: var(--muted); }
-
-/* ── BUDGET BAR ── */
-.budget-box {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px 24px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  margin-bottom: 24px;
-}
-
-.budget-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: var(--muted);
-  text-transform: uppercase;
-}
-
-.budget-amount {
-  font-family: var(--font-display);
-  font-size: 26px;
-  letter-spacing: 1px;
-  color: var(--green);
-}
-
-/* ── RESPONSIVE ── */
-@media (max-width: 900px) {
-  .login-cards { grid-template-columns: 1fr; }
-  .login-title { font-size: 48px; }
-  .grid-2 { grid-template-columns: 1fr; }
-  header { padding: 0 20px; }
-  .page { padding: 20px; }
-  .player-card-live { grid-template-columns: auto 1fr; }
-  .auction-price-block { display: none; }
-}
+ 
 </style>
 </head>
-
+ 
 <body>
-
-{% if not role %}
-<!-- ═══════════════ LOGIN PAGE ═══════════════ -->
-<div class="login-page">
-  <div class="login-wrap">
-    <div class="login-title">IPL AUCTION</div>
-    <div class="login-sub">Live Bidding System &bull; 2025</div>
-
-    {% if error %}
-    <div class="error-msg">⚠ {{ error }}</div>
-    {% endif %}
-
-    <div class="login-cards">
-
-      <!-- ADMIN CARD -->
-      <div class="login-card">
-        <span class="card-icon">🔐</span>
-        <div class="card-label">ADMIN</div>
-        <div class="card-desc">Control the auction room. Start & stop bidding, manage players, monitor all live activity.</div>
-        <form method="POST" action="/admin-login">
-          <div class="field-group">
-            <input type="password" name="password" placeholder="Admin Password" required>
-            <button class="btn-primary" type="submit">ENTER AS ADMIN</button>
-          </div>
-        </form>
-      </div>
-
-      <!-- TEAM CARD -->
-      <div class="login-card">
-        <span class="card-icon">🏏</span>
-        <div class="card-label">TEAM LOGIN</div>
-        <div class="card-desc">Login as your franchise and bid in real-time during live auction sessions.</div>
-        <form method="POST" action="/team-login">
-          <div class="field-group">
-            <select name="team">
-              <option value="MI">Mumbai Indians (MI)</option>
-              <option value="RCB">Royal Challengers Bengaluru (RCB)</option>
-              <option value="LSG">Lucknow Super Giants (LSG)</option>
-              <option value="CSK">Chennai Super Kings (CSK)</option>
-              <option value="KKR">Kolkata Knight Riders (KKR)</option>
-            </select>
-            <input type="password" name="password" placeholder="Team Password" required>
-            <button class="btn-primary" type="submit">JOIN AUCTION</button>
-          </div>
-        </form>
-      </div>
-
-    </div>
-  </div>
-</div>
-
-{% else %}
-
-<!-- ═══════════════ HEADER ═══════════════ -->
+ 
 <header>
-  <div class="logo">🏏 IPL LIVE AUCTION</div>
-  <div class="header-badge">
-    <div class="live-dot"></div>
-    <span style="font-size:12px; color: var(--muted); letter-spacing: 2px;">LIVE</span>
-    <div class="team-pill">{{ team }}</div>
-    <a href="/logout?token={{ token }}"><button class="logout-btn">← EXIT</button></a>
-  </div>
+🏏 IPL Player Auction System
 </header>
-
-<!-- ═══════════════ ADMIN DASHBOARD ═══════════════ -->
+ 
+<div class="container">
+ 
+{% if not role %}
+ 
+<div class="card login-box">
+ 
+<h2>Login</h2>
+ 
+<form method="POST">
+ 
+<select name="role">
+ 
+<option value="admin">Admin</option>
+<option value="client">Client (Bidder)</option>
+ 
+</select>
+ 
+<br><br>
+ 
+<button class="login-btn" type="submit">
+Enter Auction
+</button>
+ 
+</form>
+ 
+</div>
+ 
+{% endif %}
+ 
+ 
 {% if role == "admin" %}
-<div class="page">
-  <div class="grid-2">
-
-    <!-- LEFT: Auction Stage -->
-    <div>
-      <div class="section-label">AUCTION STAGE</div>
-      <div class="auction-spotlight" id="auctionStage">
-        <div class="spotlight-idle" id="idleState">
-          <div class="idle-icon">🎯</div>
-          <div class="idle-text">SELECT A PLAYER TO START BIDDING</div>
-        </div>
-        <div id="liveState" style="display:none;">
-          <div class="player-card-live">
-            <div class="player-avatar" id="playerAvatar">🏏</div>
-            <div>
-              <div class="player-name-live" id="liveName">—</div>
-              <div class="player-meta">
-                <span class="meta-tag team" id="liveTeam">—</span>
-                <span class="meta-tag role" id="liveRole">—</span>
-                <span class="meta-tag" id="liveSR">SR: —</span>
-              </div>
-            </div>
-            <div class="auction-price-block">
-              <div class="price-label">CURRENT BID</div>
-              <div class="price-value" id="livePrice">—</div>
-              <div class="price-unit">LAKHS</div>
-              <div class="bidder-name" id="liveBidder">No bids yet</div>
-            </div>
-          </div>
-          <div class="timer-bar-wrap">
-            <div class="timer-top">
-              <div class="timer-label">TIME REMAINING</div>
-              <div class="timer-count" id="timerCount">60</div>
-            </div>
-            <div class="timer-bar">
-              <div class="timer-fill" id="timerFill" style="width:100%"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Live Feed -->
-      <div class="section-label">BID FEED</div>
-      <div class="feed-panel">
-        <div class="section-label" style="margin-bottom:10px;">ACTIVITY</div>
-        <div class="feed-inner" id="feedInner">
-          <div class="feed-system">— Waiting for auction to begin —</div>
-        </div>
-      </div>
-
-      <!-- Players Table -->
-      <div class="section-label" style="margin-top:28px;">ALL PLAYERS</div>
-      <div class="table-wrap" style="margin-top:8px;">
-        <table>
-          <thead>
-            <tr>
-              <th>PLAYER</th>
-              <th>TEAM</th>
-              <th>ROLE</th>
-              <th>STRIKE RATE</th>
-              <th>BASE PRICE</th>
-              <th>SOLD TO</th>
-              <th>CURRENT PRICE</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for p in players %}
-            <tr id="tableRow-{{ p[0] }}">
-              <td class="td-name">{{ p[1] }}</td>
-              <td class="td-team">{{ p[2] }}</td>
-              <td><span class="td-role">{{ p[3] }}</span></td>
-              <td>{{ p[4] }}</td>
-              <td class="td-price">₹{{ p[5] }}L</td>
-              <td>
-                {% if p[7] %}
-                  <span class="td-sold">{{ p[7] }}</span>
-                {% else %}
-                  <span class="td-unsold">—</span>
-                {% endif %}
-              </td>
-              <td class="td-price" id="tablePrice-{{ p[0] }}">₹{{ p[6] }}L</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- RIGHT: Admin Controls -->
-    <div class="admin-sidebar">
-      <div class="panel-box">
-        <h3>PLAYER QUEUE</h3>
-        <div class="player-list">
-          {% for p in players %}
-          <div class="player-row {% if p[7] %}sold{% endif %}"
-               id="pRow-{{ p[0] }}"
-               onclick="selectPlayer({{ p[0] }}, '{{ p[1] }}', '{{ p[2] }}', '{{ p[3] }}', '{{ p[4] }}', {{ p[5] }})">
-            <div style="font-size:24px;">
-              {% if p[3] == 'Batsman' %}🏏
-              {% elif p[3] == 'Bowler' %}🎯
-              {% else %}⚡{% endif %}
-            </div>
-            <div class="player-row-info">
-              <div class="player-row-name">{{ p[1] }}</div>
-              <div class="player-row-meta">{{ p[2] }} • {{ p[3] }} • ₹{{ p[5] }}L</div>
-            </div>
-            {% if p[7] %}<span class="sold-badge">SOLD</span>{% endif %}
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-
-      <div class="panel-box">
-        <h3>AUCTION CONTROLS</h3>
-        <div class="auction-controls">
-          <div class="duration-row">
-            <label>DURATION (SEC)</label>
-            <input type="number" id="durationInput" value="60" min="10" max="300">
-          </div>
-          <button class="btn-start" onclick="startAuction()" id="startBtn">▶ START AUCTION</button>
-          <button class="btn-stop" onclick="stopAuction()" id="stopBtn" style="display:none;">■ STOP AUCTION</button>
-        </div>
-        <div style="margin-top:14px; padding: 12px; background: var(--bg3); border-radius:8px;">
-          <div class="section-label">SELECTED PLAYER</div>
-          <div id="selectedPlayerName" style="font-size:14px; color: var(--muted); margin-top:4px;">None selected</div>
-        </div>
-      </div>
-    </div>
-
-  </div>
+ 
+<div class="card">
+ 
+<h2>Admin Dashboard</h2>
+ 
+<table>
+ 
+<tr>
+<th>Player</th>
+<th>Team</th>
+<th>Role</th>
+<th>Strike Rate</th>
+<th>Current Auction Price</th>
+</tr>
+ 
+{% for p in players %}
+ 
+<tr>
+ 
+<td>{{p[1]}}</td>
+<td>{{p[2]}}</td>
+<td>{{p[3]}}</td>
+<td>{{p[4]}}</td>
+<td class="price">₹ {{p[6]}} L</td>
+ 
+</tr>
+ 
+{% endfor %}
+ 
+</table>
+ 
 </div>
+ 
 {% endif %}
-
-<!-- ═══════════════ CLIENT DASHBOARD ═══════════════ -->
+ 
+ 
 {% if role == "client" %}
-<div class="page">
-
-  <div class="budget-box">
-    <div>
-      <div class="budget-label">TEAM BUDGET</div>
-      <div class="budget-amount">₹{{ budget }}L</div>
-    </div>
-    <div style="width:1px; height:40px; background: var(--border);"></div>
-    <div>
-      <div class="budget-label">YOUR FRANCHISE</div>
-      <div style="font-family: var(--font-display); font-size:26px; letter-spacing:2px; color: var(--gold);">{{ team }}</div>
-    </div>
-  </div>
-
-  <div class="grid-2">
-    <div>
-      <!-- Auction Stage (view only for clients) -->
-      <div class="section-label">LIVE AUCTION</div>
-      <div class="auction-spotlight" id="auctionStage">
-        <div class="spotlight-idle" id="idleState">
-          <div class="idle-icon">⏳</div>
-          <div class="idle-text">WAITING FOR ADMIN TO START AUCTION</div>
-        </div>
-        <div id="liveState" style="display:none;">
-          <div class="player-card-live">
-            <div class="player-avatar" id="playerAvatar">🏏</div>
-            <div>
-              <div class="player-name-live" id="liveName">—</div>
-              <div class="player-meta">
-                <span class="meta-tag team" id="liveTeam">—</span>
-                <span class="meta-tag role" id="liveRole">—</span>
-                <span class="meta-tag" id="liveSR">SR: —</span>
-              </div>
-            </div>
-            <div class="auction-price-block">
-              <div class="price-label">CURRENT BID</div>
-              <div class="price-value" id="livePrice">—</div>
-              <div class="price-unit">LAKHS</div>
-              <div class="bidder-name" id="liveBidder">No bids yet</div>
-            </div>
-          </div>
-          <div class="timer-bar-wrap">
-            <div class="timer-top">
-              <div class="timer-label">TIME REMAINING</div>
-              <div class="timer-count" id="timerCount">60</div>
-            </div>
-            <div class="timer-bar">
-              <div class="timer-fill" id="timerFill" style="width:100%"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Bid Input -->
-      <div class="bid-panel" id="bidPanel">
-        <div class="section-label">PLACE YOUR BID</div>
-        <div style="font-size:13px; color: var(--muted); margin-top:4px;">Enter amount in Lakhs (₹L)</div>
-        <div class="bid-input-row">
-          <input class="bid-input" type="number" id="bidInput" placeholder="e.g. 250" min="1" step="5">
-          <button class="btn-bid" id="bidBtn" onclick="placeBid()" disabled>PLACE BID</button>
-        </div>
-        <div class="quick-bids" id="quickBids">
-          <button class="quick-bid-btn" onclick="setQuickBid(10)">+10L</button>
-          <button class="quick-bid-btn" onclick="setQuickBid(25)">+25L</button>
-          <button class="quick-bid-btn" onclick="setQuickBid(50)">+50L</button>
-          <button class="quick-bid-btn" onclick="setQuickBid(100)">+100L</button>
-        </div>
-        <div class="bid-feedback" id="bidFeedback"></div>
-      </div>
-
-      <!-- Feed -->
-      <div class="section-label">BID FEED</div>
-      <div class="feed-panel">
-        <div class="section-label" style="margin-bottom:10px;">ACTIVITY</div>
-        <div class="feed-inner" id="feedInner">
-          <div class="feed-system">— Waiting for auction to begin —</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Right: Players Table -->
-    <div>
-      <div class="section-label">ALL PLAYERS</div>
-      <div class="table-wrap" style="margin-top:8px;">
-        <table>
-          <thead>
-            <tr>
-              <th>PLAYER</th>
-              <th>ROLE</th>
-              <th>PRICE</th>
-              <th>SOLD TO</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for p in players %}
-            <tr id="tableRow-{{ p[0] }}">
-              <td class="td-name">{{ p[1] }}<br><span style="font-size:11px; color: var(--muted); font-family: var(--font-mono);">{{ p[2] }}</span></td>
-              <td><span class="td-role">{{ p[3] }}</span></td>
-              <td class="td-price" id="tablePrice-{{ p[0] }}">₹{{ p[6] if p[6] else p[5] }}L</td>
-              <td>
-                {% if p[7] %}
-                  <span class="td-sold">{{ p[7] }}</span>
-                {% else %}
-                  <span class="td-unsold">—</span>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-  </div>
+ 
+<div class="card">
+ 
+<h2>Place Your Bid</h2>
+ 
+<table>
+ 
+<tr>
+<th>Player</th>
+<th>Team</th>
+<th>Current Price</th>
+<th>Your Bid</th>
+</tr>
+ 
+{% for p in players %}
+ 
+<tr>
+ 
+<td>{{p[1]}}</td>
+<td>{{p[2]}}</td>
+ 
+<td class="price">
+₹ {{p[6]}} L
+</td>
+ 
+<td>
+ 
+<form action="/bid" method="POST">
+ 
+<input type="hidden" name="player_id" value="{{p[0]}}">
+ 
+<input type="number" name="bid_price" placeholder="Enter Bid" required>
+ 
+<button type="submit">
+Bid
+</button>
+ 
+</form>
+ 
+</td>
+ 
+</tr>
+ 
+{% endfor %}
+ 
+</table>
+ 
 </div>
+ 
 {% endif %}
-
-<!-- ═══════════════ SOLD OVERLAY ═══════════════ -->
-<div class="sold-overlay" id="soldOverlay">
-  <div class="sold-card">
-    <div class="sold-label">SOLD!</div>
-    <div class="sold-player" id="soldPlayerName">Player Name</div>
-    <div class="sold-team" id="soldTeam">TEAM</div>
-    <div class="sold-price" id="soldPrice">₹—L</div>
-    <button class="sold-close" onclick="document.getElementById('soldOverlay').style.display='none'">CLOSE</button>
-  </div>
+ 
 </div>
-
-<div class="unsold-overlay" id="unsoldOverlay">
-  <div class="unsold-card">
-    <div class="unsold-label">UNSOLD</div>
-    <div class="unsold-player" id="unsoldPlayerName">Player returned to pool</div>
-    <button class="sold-close" onclick="document.getElementById('unsoldOverlay').style.display='none'">CLOSE</button>
-  </div>
-</div>
-
-{% endif %}
-
-<!-- ═══════════════ SCRIPTS ═══════════════ -->
-<script>
-{% if role %}
-const socket = io();
-const myTeam = "{{ team }}";
-const myRole = "{{ role }}";
-const myToken = "{{ token }}";
-let timerMax = 60;
-let currentPlayerId = null;
-let currentPrice = 0;
-
-// ── Socket connection: join room, then sync current state
-let auctionLive = false;
-
-function syncAuctionState() {
-  fetch("/auction-state")
-    .then(r => r.json())
-    .then(data => {
-      if (data.active) {
-        if (!auctionLive) {
-          auctionLive = true;
-          timerMax = data.full_duration || data.time_left;
-          handleAuctionStarted(data);
-        }
-        if (data.highest_bid > currentPrice) {
-          currentPrice = data.highest_bid;
-          document.getElementById("livePrice").textContent = data.highest_bid;
-        }
-        if (data.highest_bidder) {
-          document.getElementById("liveBidder").textContent = "▲ " + data.highest_bidder;
-        }
-      } else {
-        auctionLive = false;
-      }
-    })
-    .catch(() => {});
-}
-
-// Join room and sync state on every connect/reconnect
-socket.on("connect", () => {
-  socket.emit("join", {}, () => {
-    syncAuctionState();
-  });
-});
-
-// ── Admin: select player
-let selectedPlayerId = null;
-
-function selectPlayer(id, name, team, role, sr, price) {
-  selectedPlayerId = id;
-  document.getElementById("selectedPlayerName").textContent = name + " — ₹" + price + "L";
-  document.querySelectorAll(".player-row").forEach(r => r.classList.remove("active"));
-  const row = document.getElementById("pRow-" + id);
-  if (row) row.classList.add("active");
-}
-
-function startAuction() {
-  if (!selectedPlayerId) { alert("Select a player first!"); return; }
-  const duration = parseInt(document.getElementById("durationInput")?.value || 60);
-  fetch("/admin/start-auction", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ player_id: selectedPlayerId, duration, token: myToken })
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (data.status === "started") {
-      document.getElementById("startBtn").style.display = "none";
-      document.getElementById("stopBtn").style.display = "block";
-    } else {
-      alert("Error starting auction: " + (data.error || "unknown"));
-    }
-  })
-  .catch(() => alert("Network error — could not start auction"));
-}
-
-function stopAuction() {
-  fetch("/admin/stop-auction", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({token: myToken}) });
-  document.getElementById("startBtn") && (document.getElementById("startBtn").style.display = "block");
-  document.getElementById("stopBtn") && (document.getElementById("stopBtn").style.display = "none");
-}
-
-// ── Client: bid
-function placeBid() {
-  const bidVal = parseInt(document.getElementById("bidInput").value);
-  console.log("placeBid called, bidVal:", bidVal, "currentPrice:", currentPrice, "auctionLive:", auctionLive);
-  if (!bidVal || isNaN(bidVal)) {
-    showFeedback("Please enter a valid amount", "error");
-    return;
-  }
-  if (bidVal <= currentPrice) {
-    showFeedback("Bid must be higher than ₹" + currentPrice + "L", "error");
-    return;
-  }
-  socket.emit("place_bid", { token: myToken, bid_amount: bidVal });
-  console.log("place_bid emitted");
-}
-
-function setQuickBid(add) {
-  document.getElementById("bidInput").value = currentPrice + add;
-}
-
-function showFeedback(msg, type) {
-  const el = document.getElementById("bidFeedback");
-  if (!el) return;
-  el.textContent = msg;
-  el.className = "bid-feedback " + type;
-  setTimeout(() => el.className = "bid-feedback", 3000);
-}
-
-// ── Socket events
-function handleAuctionStarted(data) {
-  currentPlayerId = data.player_id;
-  currentPrice = data.base_price;
-  timerMax = data.time_left;  // full duration — only correct on live auction_started event
-
-  document.getElementById("idleState").style.display = "none";
-  document.getElementById("liveState").style.display = "block";
-  document.getElementById("liveName").textContent = data.player_name;
-  document.getElementById("liveTeam").textContent = data.ipl_team;
-  document.getElementById("liveRole").textContent = data.player_role;
-  document.getElementById("liveSR").textContent = "SR: " + data.strike_rate;
-  document.getElementById("livePrice").textContent = data.base_price;
-  document.getElementById("liveBidder").textContent = "No bids yet";
-  document.getElementById("timerCount").textContent = data.time_left;
-  document.getElementById("timerFill").style.width = "100%";
-  document.getElementById("timerFill").classList.remove("urgent");
-  document.getElementById("timerCount").classList.remove("urgent");
-
-  if (myRole === "client") {
-    document.getElementById("bidBtn").disabled = false;
-    document.getElementById("bidInput").value = "";
-    document.getElementById("bidInput").placeholder = "Min: ₹" + (data.base_price + 1) + "L";
-  }
-
-  addFeed("SYSTEM", null, "🔔 Auction started for " + data.player_name, null);
-}
-
-socket.on("auction_started", (data) => { auctionLive = true; handleAuctionStarted(data); });
-
-socket.on("timer_update", (data) => {
-  const t = data.time_left;
-  document.getElementById("timerCount").textContent = t;
-  const pct = (t / timerMax) * 100;
-  document.getElementById("timerFill").style.width = pct + "%";
-
-  const urgent = t <= 10;
-  document.getElementById("timerFill").classList.toggle("urgent", urgent);
-  document.getElementById("timerCount").classList.toggle("urgent", urgent);
-
-  if (data.highest_bidder) {
-    document.getElementById("livePrice").textContent = data.highest_bid;
-    document.getElementById("liveBidder").textContent = "▲ " + data.highest_bidder;
-    currentPrice = data.highest_bid;
-  }
-});
-
-socket.on("new_bid", (data) => {
-  currentPrice = data.bid_amount;
-  document.getElementById("livePrice").textContent = data.bid_amount;
-  document.getElementById("liveBidder").textContent = "▲ " + data.team;
-  addFeed(data.team, null, "placed a bid", data.bid_amount);
-
-  if (myRole === "client" && data.team === myTeam) {
-    showFeedback("✓ Bid placed: ₹" + data.bid_amount + "L", "success");
-  }
-});
-
-socket.on("auction_ended", (data) => {
-  auctionLive = false;
-  document.getElementById("idleState").style.display = "block";
-  document.getElementById("liveState").style.display = "none";
-  document.getElementById("timerFill").style.width = "0%";
-
-  if (myRole === "client") document.getElementById("bidBtn").disabled = true;
-  if (myRole === "admin") {
-    document.getElementById("startBtn").style.display = "block";
-    document.getElementById("stopBtn").style.display = "none";
-  }
-
-  if (data.sold_to) {
-    document.getElementById("soldPlayerName").textContent = document.getElementById("liveName")?.textContent || "Player";
-    document.getElementById("soldTeam").textContent = data.sold_to;
-    document.getElementById("soldPrice").textContent = "₹" + data.sold_price + "L";
-    const priceEl = document.getElementById("tablePrice-" + data.player_id);
-    if (priceEl) priceEl.textContent = "₹" + data.sold_price + "L";
-    const row = document.getElementById("pRow-" + data.player_id);
-    if (row) {
-      row.classList.add("sold");
-      const existing = row.querySelector(".sold-badge");
-      if (!existing) row.innerHTML += '<span class="sold-badge">SOLD</span>';
-    }
-    addFeed("SOLD", null, "Player sold to " + data.sold_to + " for ₹" + data.sold_price + "L", null);
-    document.getElementById("soldOverlay").style.display = "flex";
-    setTimeout(() => document.getElementById("soldOverlay").style.display = "none", 5000);
-  } else {
-    addFeed("SYSTEM", null, "⚠ Player went unsold", null);
-    document.getElementById("unsoldOverlay").style.display = "flex";
-    setTimeout(() => document.getElementById("unsoldOverlay").style.display = "none", 3000);
-  }
-});
-
-socket.on("auction_stopped", () => {
-  auctionLive = false;
-  document.getElementById("idleState").style.display = "block";
-  document.getElementById("liveState").style.display = "none";
-  addFeed("SYSTEM", null, "⛔ Auction stopped by admin", null);
-  if (myRole === "client") document.getElementById("bidBtn").disabled = true;
-  if (myRole === "admin") {
-    document.getElementById("startBtn").style.display = "block";
-    document.getElementById("stopBtn").style.display = "none";
-  }
-});
-
-socket.on("bid_error", (data) => {
-  if (myRole === "client") showFeedback("✗ " + data.message, "error");
-});
-
-function addFeed(team, _, text, amount) {
-  const feed = document.getElementById("feedInner");
-  if (!feed) return;
-  const now = new Date();
-  const time = now.toTimeString().split(" ")[0].slice(0,5);
-  const div = document.createElement("div");
-
-  if (team === "SYSTEM" || team === "SOLD") {
-    div.className = "feed-system";
-    div.textContent = time + "  " + text;
-  } else {
-    div.className = "feed-item";
-    div.innerHTML = `
-      <span class="feed-time">${time}</span>
-      <span class="feed-team">${team}</span>
-      <span class="feed-text">${text}</span>
-      ${amount ? '<span class="feed-amount">₹' + amount + 'L</span>' : ''}
-    `;
-  }
-  feed.prepend(div);
-}
-{% endif %}
-</script>
-
+ 
 </body>
 </html>
