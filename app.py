@@ -194,16 +194,16 @@ def start_auction():
     auction_state["full_duration"] = duration   # stored so late-joiners know the 100% mark
     auction_state["timer_running"] = True
     auction_state["highest_bidder"] = None
-    auction_state["highest_bid"] = int(player[6])   # cast Decimal→int immediately
+    auction_state["highest_bid"] = int(player[5])   # player[5] = base_price
     auction_state["sold_to"] = None
 
     socketio.emit("auction_started", {
         "player_id": player_id,
         "player_name": player[1],
-        "ipl_team": player[2],        # renamed key to avoid clash with Flask 'team'
+        "ipl_team": player[2],
         "player_role": player[3],
-        "strike_rate": float(player[4]),   # fix: Decimal → float for JSON
-        "base_price": int(player[6]),      # fix: ensure int not Decimal
+        "strike_rate": float(player[4]),
+        "base_price": int(player[5]),      # player[5] = base_price
         "time_left": duration,
     }, room="auction_room", namespace="/")
 
