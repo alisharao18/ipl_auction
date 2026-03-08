@@ -1357,21 +1357,19 @@ function syncAuctionState() {
         if (data.highest_bidder) {
           document.getElementById("liveBidder").textContent = "▲ " + data.highest_bidder;
         }
-      } else if (!data.active) {
+      } else {
         auctionLive = false;
       }
     })
     .catch(() => {});
 }
 
+// Join room and sync state on every connect/reconnect
 socket.on("connect", () => {
   socket.emit("join", {}, () => {
     syncAuctionState();
   });
 });
-
-// Poll every 2 seconds as fallback in case socket event was missed
-setInterval(syncAuctionState, 2000);
 
 // ── Admin: select player
 let selectedPlayerId = null;
@@ -1413,11 +1411,17 @@ function stopAuction() {
 // ── Client: bid
 function placeBid() {
   const bidVal = parseInt(document.getElementById("bidInput").value);
-  if (!bidVal || bidVal <= currentPrice) {
+  console.log("placeBid called, bidVal:", bidVal, "currentPrice:", currentPrice, "auctionLive:", auctionLive);
+  if (!bidVal || isNaN(bidVal)) {
+    showFeedback("Please enter a valid amount", "error");
+    return;
+  }
+  if (bidVal <= currentPrice) {
     showFeedback("Bid must be higher than ₹" + currentPrice + "L", "error");
     return;
   }
   socket.emit("place_bid", { token: myToken, bid_amount: bidVal });
+  console.log("place_bid emitted");
 }
 
 function setQuickBid(add) {
