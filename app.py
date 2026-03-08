@@ -8,7 +8,7 @@ import secrets
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ipl_auction_secret_2024")
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
