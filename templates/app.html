@@ -1149,7 +1149,7 @@ tbody tr:last-child td { border-bottom: none; }
           {% for p in players %}
           <div class="player-row {% if p[7] %}sold{% endif %}"
                id="pRow-{{ p[0] }}"
-               onclick="selectPlayer({{ p[0] }}, '{{ p[1] }}', '{{ p[2] }}', '{{ p[3] }}', '{{ p[4] }}', {{ p[6] }})">
+               onclick="selectPlayer({{ p[0] }}, '{{ p[1] }}', '{{ p[2] }}', '{{ p[3] }}', '{{ p[4] }}', {{ p[5] }})">
             <div style="font-size:24px;">
               {% if p[3] == 'Batsman' %}🏏
               {% elif p[3] == 'Bowler' %}🎯
@@ -1157,7 +1157,7 @@ tbody tr:last-child td { border-bottom: none; }
             </div>
             <div class="player-row-info">
               <div class="player-row-name">{{ p[1] }}</div>
-              <div class="player-row-meta">{{ p[2] }} • {{ p[3] }} • ₹{{ p[6] }}L</div>
+              <div class="player-row-meta">{{ p[2] }} • {{ p[3] }} • ₹{{ p[5] }}L</div>
             </div>
             {% if p[7] %}<span class="sold-badge">SOLD</span>{% endif %}
           </div>
@@ -1346,12 +1346,10 @@ function syncAuctionState() {
     .then(data => {
       if (data.active) {
         if (!auctionLive) {
-          // First time seeing this auction — do full init
           auctionLive = true;
           timerMax = data.full_duration || data.time_left;
           handleAuctionStarted(data);
         }
-        // Always keep currentPrice in sync with server (catches missed bids)
         if (data.highest_bid > currentPrice) {
           currentPrice = data.highest_bid;
           document.getElementById("livePrice").textContent = data.highest_bid;
@@ -1462,10 +1460,7 @@ function handleAuctionStarted(data) {
   addFeed("SYSTEM", null, "🔔 Auction started for " + data.player_name, null);
 }
 
-socket.on("auction_started", (data) => {
-  auctionLive = true;
-  handleAuctionStarted(data);
-});
+socket.on("auction_started", (data) => { auctionLive = true; handleAuctionStarted(data); });
 
 socket.on("timer_update", (data) => {
   const t = data.time_left;
