@@ -42,25 +42,26 @@ auction_state = {
 auction_timer_thread = None
 
 
-# ─── DB HELPERS ────────────────────────────────────────────
-
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
 
 def init_db():
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS sessions (
-            token VARCHAR(64) PRIMARY KEY,
-            role  VARCHAR(10) NOT NULL,
-            team  VARCHAR(10) NOT NULL,
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-    """)
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                token VARCHAR(64) PRIMARY KEY,
+                role  VARCHAR(10) NOT NULL,
+                team  VARCHAR(10) NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"init_db error: {e}")
 
 
 def token_set(token, role, team):
@@ -78,20 +79,26 @@ def token_set(token, role, team):
 def token_get(token):
     if not token:
         return None
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT role, team FROM sessions WHERE token=%s", (token,))
-    row = cur.fetchone()
-    conn.close()
-    return {"role": row[0], "team": row[1]} if row else None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT role, team FROM sessions WHERE token=%s", (token,))
+        row = cur.fetchone()
+        conn.close()
+        return {"role": row[0], "team": row[1]} if row else None
+    except Exception:
+        return None
 
 
 def token_delete(token):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM sessions WHERE token=%s", (token,))
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM sessions WHERE token=%s", (token,))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 
 def get_players():
@@ -123,8 +130,6 @@ def update_auction_price(player_id, price, team):
     conn.close()
 
 
-# ─── TIMER ─────────────────────────────────────────────────
-
 def run_auction_timer():
     global auction_state
     while auction_state["timer_running"] and auction_state["time_left"] > 0:
@@ -155,8 +160,6 @@ def run_auction_timer():
                 }, room="auction_room", namespace="/")
             auction_state["active"] = False
 
-
-# ─── ROUTES ────────────────────────────────────────────────
 
 @app.route("/", methods=["GET", "POST"])
 def home():
@@ -209,8 +212,6 @@ def dashboard():
                            budget=budget,
                            auction_state=auction_state)
 
-
-# ─── ADMIN API ─────────────────────────────────────────────
 
 @app.route("/admin/start-auction", methods=["POST"])
 def start_auction():
@@ -307,8 +308,6 @@ def get_auction_state():
     })
 
 
-# ─── SOCKETIO ──────────────────────────────────────────────
-
 @socketio.on("join")
 def on_join(data):
     join_room("auction_room")
@@ -352,8 +351,6 @@ def on_bid(data):
         "time_left": auction_state["time_left"],
     }, room="auction_room", namespace="/")
 
-
-# ─── STARTUP ───────────────────────────────────────────────
 
 init_db()
 
