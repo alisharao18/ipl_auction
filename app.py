@@ -171,11 +171,15 @@ def dashboard():
 
 @app.route("/admin/start-auction", methods=["POST"])
 def start_auction():
-    token = request.json.get("token", "")
+
+    data = request.get_json(force=True)
+
+    token = data.get("token", "")
     if active_tokens.get(token, {}).get("role") != "admin":
         return jsonify({"error": "Unauthorized"}), 403
+
     global auction_timer_thread
-    data = request.json
+
     player_id = data.get("player_id")
     duration = int(data.get("duration", 60))
 
@@ -183,7 +187,6 @@ def start_auction():
     if not player:
         return jsonify({"error": "Player not found"}), 404
 
-    # Stop any existing timer thread before starting a new one
     auction_state["timer_running"] = False
     if auction_timer_thread and auction_timer_thread.is_alive():
         auction_timer_thread.join(timeout=2)
@@ -191,10 +194,10 @@ def start_auction():
     auction_state["active"] = True
     auction_state["current_player_id"] = player_id
     auction_state["time_left"] = duration
-    auction_state["full_duration"] = duration   # stored so late-joiners know the 100% mark
+    auction_state["full_duration"] = duration
     auction_state["timer_running"] = True
     auction_state["highest_bidder"] = None
-    auction_state["highest_bid"] = int(player[5])   # player[5] = base_price
+    auction_state["highest_bid"] = int(player[5])
     auction_state["sold_to"] = None
 
     socketio.emit("auction_started", {
@@ -203,9 +206,9 @@ def start_auction():
         "ipl_team": player[2],
         "player_role": player[3],
         "strike_rate": float(player[4]),
-        "base_price": int(player[5]),      # player[5] = base_price
+        "base_price": int(player[5]),
         "time_left": duration,
-    }, room="auction_room", namespace="/")
+    }, room="auction_room")
 
     auction_timer_thread = threading.Thread(target=run_auction_timer, daemon=True)
     auction_timer_thread.start()
@@ -310,3 +313,4 @@ def on_bid(data):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     socketio.run(app, host="0.0.0.0", port=port)
+
