@@ -303,15 +303,13 @@ def on_bid(data):
     auction_state["highest_bid"] = bid_amount
     auction_state["highest_bidder"] = team
 
-    socketio.emit("new_bid", {
+    emit("new_bid", {
         "team": team,
         "bid_amount": bid_amount,
         "time_left": auction_state["time_left"],
-    }, room="auction_room", namespace="/")
+    }, room="auction_room")
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     socketio.run(app, host="0.0.0.0", port=port)
-
-
