@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPL Auction — Login</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #FFB800;
+    --gold-dark: #CC9200;
+    --navy: #0A0E27;
+    --navy2: #111535;
+    --red: #E8003D;
+    --white: #F5F0E8;
+    --glass: rgba(255,255,255,0.05);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--navy);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* animated bg */
+  .bg-orbs {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  }
+  .orb {
+    position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.18;
+    animation: drift 12s ease-in-out infinite alternate;
+  }
+  .orb1 { width:500px;height:500px;background:var(--gold);top:-100px;left:-150px; animation-delay:0s; }
+  .orb2 { width:400px;height:400px;background:var(--red);bottom:-100px;right:-100px; animation-delay:3s; }
+  .orb3 { width:300px;height:300px;background:#4B0082;top:40%;left:60%; animation-delay:6s; }
+  @keyframes drift { from{transform:translate(0,0) scale(1);} to{transform:translate(40px,30px) scale(1.1);} }
+
+  .login-wrap {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column; align-items: center; gap: 40px;
+  }
+
+  .brand {
+    text-align: center;
+  }
+  .brand-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 72px;
+    letter-spacing: 6px;
+    line-height: 1;
+    background: linear-gradient(135deg, var(--gold) 0%, #FF6B00 50%, var(--red) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .brand-sub {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.4);
+    margin-top: 6px;
+  }
+
+  .login-card {
+    background: var(--glass);
+    border: 1px solid rgba(255,184,0,0.2);
+    border-radius: 20px;
+    padding: 44px 48px;
+    width: 400px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+
+  .login-card h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 3px;
+    color: var(--white);
+    margin-bottom: 30px;
+  }
+
+  .field { margin-bottom: 20px; }
+  .field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.45);
+    margin-bottom: 8px;
+  }
+  .field input, .field select {
+    width: 100%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 14px 16px;
+    color: var(--white);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .field input::placeholder { color: rgba(255,255,255,0.25); }
+  .field input:focus, .field select:focus { border-color: var(--gold); }
+  .field select option { background: var(--navy2); color: white; }
+
+  .role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .role-btn {
+    background: rgba(255,255,255,0.04);
+    border: 1.5px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 18px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: rgba(255,255,255,0.6);
+  }
+  .role-btn input { display:none; }
+  .role-btn .icon { font-size: 26px; margin-bottom: 6px; display: block; }
+  .role-btn .label { font-size: 13px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .role-btn:has(input:checked), .role-btn.selected {
+    border-color: var(--gold);
+    background: rgba(255,184,0,0.1);
+    color: var(--gold);
+  }
+
+  .enter-btn {
+    width: 100%;
+    background: linear-gradient(135deg, var(--gold), #FF6B00);
+    border: none;
+    border-radius: 12px;
+    padding: 16px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 3px;
+    color: var(--navy);
+    cursor: pointer;
+    margin-top: 8px;
+    transition: all 0.2s;
+    box-shadow: 0 8px 30px rgba(255,184,0,0.3);
+  }
+  .enter-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(255,184,0,0.45); }
+  .enter-btn:active { transform: translateY(0); }
+
+  .divider { height:1px; background:rgba(255,255,255,0.08); margin: 24px 0; }
+
+  .live-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(232,0,61,0.15); border: 1px solid rgba(232,0,61,0.3);
+    border-radius: 20px; padding: 8px 16px;
+    font-size: 12px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--red);
+  }
+  .live-dot { width:8px;height:8px;border-radius:50%;background:var(--red);animation:pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:0.4;transform:scale(0.8);} }
+</style>
+</head>
+<body>
+<div class="bg-orbs">
+  <div class="orb orb1"></div>
+  <div class="orb orb2"></div>
+  <div class="orb orb3"></div>
+</div>
+
+<div class="login-wrap">
+  <div class="brand">
+    <div class="brand-title">IPL AUCTION</div>
+    <div class="brand-sub">Live Bidding System 2024</div>
+  </div>
+
+  <div class="live-badge">
+    <span class="live-dot"></span>
+    Live Rooms Active
+  </div>
+
+  <div class="login-card">
+    <h2>Enter the Arena</h2>
+    <form method="POST" action="/">
+      <div class="field">
+        <label>Your Name / Team Name</label>
+        <input type="text" name="username" placeholder="e.g. Mumbai Indians" required>
+      </div>
+
+      <div class="field">
+        <label>Select Role</label>
+        <div class="role-grid">
+          <label class="role-btn" id="admin-btn">
+            <input type="radio" name="role" value="admin" required>
+            <span class="icon">🛡️</span>
+            <span class="label">Admin</span>
+          </label>
+          <label class="role-btn" id="client-btn">
+            <input type="radio" name="role" value="client">
+            <span class="icon">🏏</span>
+            <span class="label">Bidder</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <button type="submit" class="enter-btn">Enter Auction →</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>
